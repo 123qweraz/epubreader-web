@@ -57,11 +57,16 @@ function pyAnnotateNode(node) {
   node.replaceWith(frag);
   return chars;
 }
-function pyAnnotateRootSync(doc, root) {
+/* 关键: 先快照全部文本节点再逐个替换 —— TreeWalker是活的, 边遍历边replaceWith会让当前节点
+   脱离文档树导致后续nextNode()返回null(渐进泵只注出一个字就停死的根因) */
+function pyCollectNodes(doc, root) {
   const walker = pyWalker(doc, root);
-  const nodes = [];
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const n of nodes) pyAnnotateNode(n);
+  const out = [];
+  while (walker.nextNode()) out.push(walker.currentNode);
+  return out;
+}
+function pyAnnotateRootSync(doc, root) {
+  for (const n of pyCollectNodes(doc, root)) pyAnnotateNode(n);
 }
 /* 目标块收集: 整书模式章节区/TXT行块下沉, 无结构回退body */
 function collectPyTargets(doc) {
@@ -100,9 +105,11 @@ function pyPump() {
     let chars = 0;
     while (pyQueue.length && performance.now() < deadline && chars < PY_BATCH_CHARS) {
       const it = pyQueue[0];
-      it.walker ||= pyWalker(it.doc, it.el);
-      const n = it.walker.nextNode();
-      if (!n) { pyQueue.shift(); continue; }
+      if (it.doc !== doc) { pyQueue.shift(); continue; }
+      it.nodes ||= pyCollectNodes(it.doc, it.el);
+      if (it.pos >= it.nodes.length) { it.el.dataset.pyQ = ""; pyQueue.shift(); continue; }
+      const n = it.nodes[it.pos++];
+      if (!n.isConnected) continue; /* 已被前序替换带走的节点跳过 */
       chars += pyAnnotateNode(n);
     }
     if (pyQueue.length) schedule();
@@ -112,7 +119,7 @@ function pyPump() {
 function pyEnqueue(doc, el) {
   if (el.dataset.pyQ) return;
   el.dataset.pyQ = "1";
-  pyQueue.push({ doc, el });
+  pyQueue.push({ doc, el, nodes: null, pos: 0 });
   pyPump();
 }
 /* 邻域观察器: 必须用iframe自己的构造器(跨文档); 滚动模式吃纵向margin, 翻页模式transform位移同样触发 */
