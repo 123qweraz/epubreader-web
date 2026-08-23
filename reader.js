@@ -979,7 +979,7 @@ function pagedCss(w) {
   return `
     html,body{overflow:hidden;height:100%;}
     body{min-height:0;padding:40px ${PG_PADX}px;overflow-y:hidden;}
-    .pgflow{height:100%;column-width:${w}px;column-gap:${PG_GAP}px;column-fill:auto;will-change:transform;}
+    .pgflow{height:100%;column-width:${w}px;column-gap:${PG_GAP}px;column-fill:auto;will-change:transform;touch-action:pan-y;}
     .pgflow img,.pgflow svg,.pgflow video{max-height:calc(100% - 24px);}
   `;
 }
@@ -1000,7 +1000,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     body>*{max-width:100%;} img,svg,video{max-width:100%;height:auto;} pre{white-space:pre-wrap;overflow:auto;}
     a{color:inherit;} p{text-align:justify;} h1,h2,h3,h4,h5,h6{break-after:avoid;}
     img,figure,table,pre,blockquote{break-inside:avoid;}
-    html{scroll-behavior:smooth;}
+    html{scroll-behavior:smooth;overscroll-behavior:contain;}
     ${extraCss}
     ${pagedStyle}
     ${pinyinCss}
@@ -1244,6 +1244,51 @@ function pagedWheel(e) {
   }
 }
 
+/* ---- 移动端触摸手势: 横扫/左右点按分区翻页(仅翻页模式), 中间点按切换沉浸模式(双模式通用) ---- */
+let touchX = 0, touchY = 0, touchT = 0, touchMoved = false, immersiveOn = false;
+function frameTouchStart(e) {
+  if (e.touches.length !== 1) { touchMoved = true; return; }   /* 多指=缩放, 放弃跟踪 */
+  const t = e.touches[0];
+  touchX = t.clientX; touchY = t.clientY; touchT = performance.now(); touchMoved = false;
+}
+function frameTouchMove(e) {
+  if (e.touches.length > 1) { touchMoved = true; return; }
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - touchX) > 10 || Math.abs(t.clientY - touchY) > 10) touchMoved = true;
+}
+function frameTouchEnd(e) {
+  if (e.changedTouches.length !== 1 || e.target?.closest?.("a[href],button")) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchX, dy = t.clientY - touchY, dt = performance.now() - touchT;
+  /* 横向快扫翻页: 仅翻页模式消费; 滚动模式不拦截, 原生滚动照常 */
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 600 && pagedActive()) {
+    e.preventDefault();
+    flipPage(dx < 0 ? 1 : -1);
+    return;
+  }
+  if (touchMoved || dt >= 300) return;   /* 拖选/长按不算点按 */
+  const w = $("bookFrame")?.clientWidth;
+  if (!w) return;
+  if (pagedActive() && !(t.clientX > w * .3 && t.clientX < w * .7)) {
+    e.preventDefault();                  /* 左右30%分区: 上/下一页 */
+    flipPage(t.clientX > w * .5 ? 1 : -1);
+    return;
+  }
+  if (t.clientX > w * .3 && t.clientX < w * .7) {
+    e.preventDefault();                  /* 中间点按: 工具栏+状态栏显隐(沉浸阅读) */
+    toggleImmersive();
+  }
+}
+/* 沉浸模式: 隐藏工具栏与状态栏, 内容区扩展后重排版(纯高度变化, syncPagedWidth只认宽度故需手动触发) */
+function toggleImmersive() {
+  immersiveOn = !immersiveOn;
+  document.body.classList.toggle("immersive", immersiveOn);
+  setTimeout(() => {
+    if (!pagedCtx) return;
+    measurePaged(); buildUnitPages(); applyPagedTransform(true);
+  }, 80);
+}
+
 function setReadMode(mode) {
   mode = mode === "paged" ? "paged" : "scroll";
   if (mode === state.readMode) return;
@@ -1368,6 +1413,9 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
     doc.addEventListener("dragleave", dragLeave);
     doc.addEventListener("drop", dropFile);
     doc.addEventListener("wheel", pagedWheel, {passive:true});
+    doc.addEventListener("touchstart", frameTouchStart, {passive:true});
+    doc.addEventListener("touchmove", frameTouchMove, {passive:true});
+    doc.addEventListener("touchend", frameTouchEnd, {passive:false});
   }
   if (doc.querySelector(".pgflow")) {
     setupPaged(doc);
