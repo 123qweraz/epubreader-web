@@ -153,7 +153,9 @@ function parseTxtChapters(text) {
 }
 const THEMES = {
   light: { bg: "#fbfaf7", fg: "#292725" },
+  white: { bg: "#ffffff", fg: "#292725" },
   sepia: { bg: "#f4ecd8", fg: "#4a3b2a" },
+  green: { bg: "#d9edd9", fg: "#26332b" },
   dark:  { bg: "#211f1d", fg: "#ddd8cf" }
 };
 function currentCustom() { return state.customSlots[state.customSlotIdx] || null; }
@@ -192,7 +194,7 @@ const state = {
   lineHeight: Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75)),
   fontFamily: localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif",
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
-  theme: ["light","sepia","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
+  theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: (() => {
     const DEF = { bg: "#fbfaf7", fg: "#292725" };
     const HEX = v => /^#[0-9a-f]{6}$/i.test(v);
@@ -1683,6 +1685,8 @@ function applyTheme() {
   }
   document.body.classList.toggle("dark", dark);
   document.body.classList.toggle("sepia", state.theme === "sepia");
+  document.body.classList.toggle("white", state.theme === "white");
+  document.body.classList.toggle("green", state.theme === "green");
   applyCustomTheme();
   syncThemeChips();
   localStorage.setItem("theme", state.theme);

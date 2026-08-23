@@ -69,6 +69,8 @@ button.active { background: var(--accent); color: var(--bg); }
 #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
 body.dark { --bg: #1c1b1a; --fg: #ddd8cf; --muted: #918b81; --bar: rgba(28,27,26,.95); --border: #393633; --button: #302e2b; --reader-bg: #211f1d; --accent: #c8b99f; }
 body.sepia { --bg: #eee4c9; --fg: #4a3b2a; --muted: #8a7a62; --bar: rgba(238,228,201,.94); --border: #dccfa8; --button: #e6dab9; --reader-bg: #f4ecd8; --accent: #8a6a3b; }
+body.white { --bg: #f0f0f0; --fg: #292725; --muted: #77736c; --bar: rgba(240,240,240,.94); --border: #cecece; --button: #dddddd; --reader-bg: #ffffff; --accent: #635b4f; }
+body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229,205,.94); --border: #b0c5b0; --button: #bdd3bd; --reader-bg: #d9edd9; --accent: #32af70; }
 
 .settingsPanel { position: fixed; top: 54px; right: 10px; z-index: 20; background: var(--bar); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: grid; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); min-width: 300px; }
 .settingsPanel[hidden] { display: none; }

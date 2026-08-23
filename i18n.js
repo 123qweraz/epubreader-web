@@ -9,7 +9,7 @@ const I18N_STRINGS = {
     speedSlow: "慢", speedFast: "快", autoReadSpeedAria: "自动阅读速度",
     menuOpen: "打开书籍…", menuCloseBook: "✕　关闭书籍",
     /* 设置面板 */
-    secTheme: "系统主题", themeLight: "浅色", themeSepia: "羊皮纸", themeDark: "深色",
+    secTheme: "系统主题", themeLight: "米白", themeWhite: "纯白", themeSepia: "羊皮纸", themeGreen: "护眼绿", themeDark: "深色",
     secCustom: "自定义主题",
     ctBgLabel: "纸面颜色", ctFgLabel: "文字颜色",
     colorAriaBg: "自定义纸面颜色", colorAriaFg: "自定义文字颜色",
@@ -64,7 +64,7 @@ const I18N_STRINGS = {
     modeTip: "Toggle scroll/paged mode", settings: "Reading settings", menu: "Menu",
     speedSlow: "Slow", speedFast: "Fast", autoReadSpeedAria: "Auto-read speed",
     menuOpen: "Open book…", menuCloseBook: "✕　Close book",
-    secTheme: "Built-in themes", themeLight: "Light", themeSepia: "Sepia", themeDark: "Dark",
+    secTheme: "Built-in themes", themeLight: "Cream", themeWhite: "White", themeSepia: "Sepia", themeGreen: "Green", themeDark: "Dark",
     secCustom: "Custom themes",
     ctBgLabel: "Paper color", ctFgLabel: "Text color",
     colorAriaBg: "Custom paper color", colorAriaFg: "Custom text color",
