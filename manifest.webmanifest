@@ -1,0 +1,18 @@
+{
+  "name": "EPUB Reader",
+  "short_name": "EPUB Reader",
+  "description": "纯本地 EPUB/TXT 阅读器",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#635b4f",
+  "theme_color": "#635b4f",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

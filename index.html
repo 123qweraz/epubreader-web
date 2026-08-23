@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>EPUB Reader</title>
   <link rel="icon" href="icons/icon32.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#635b4f">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="reader.css">
 </head>
 <body>
@@ -157,5 +160,6 @@
   <div id="dropOverlay" class="dropOverlay" hidden><span data-i18n="dropOverlay">松开以打开文件</span></div>
   <script src="i18n.js"></script>
   <script src="reader.js"></script>
+  <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));</script>
 </body>
 </html>

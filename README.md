@@ -37,9 +37,21 @@ python3 -m http.server 8080
 
 连接仓库或直接拖拽目录上传，零配置。根目录已含 `.nojekyll`（GitHub Pages 免 Jekyll 处理）。
 
+## PWA（可安装、离线使用）
+
+已内置完整 PWA 支持，部署到 HTTPS 环境后自动生效：
+
+- 浏览器地址栏会出现「安装」按钮（或菜单 → 安装应用 / 添加到主屏幕），安装后以独立窗口运行
+- Service Worker 缓存全部应用外壳，首次访问后断网也能正常打开阅读
+- 缓存策略：页面导航网络优先（发版即达），静态资源缓存优先 + 后台更新
+- iOS Safari：分享 → 添加到主屏幕（图标用 apple-touch-icon）
+
+发版注意：改动静态文件后需把 `sw.js` 顶部的 `VERSION` 递增一位（如 `v1` → `v2`），客户端旧缓存才会被淘汰。
+
 ## 技术说明
 
 - 解压依赖浏览器原生 `DecompressionStream`（Chrome/Edge 80+、Firefox 113+、Safari 16.4+），需 HTTPS 或 localhost 环境
 - 存储：书籍文件与元数据存 IndexedDB（上限 30 本，按最旧读取时间清理）；界面偏好存 localStorage；进度双写（localStorage 热缓存 + IndexedDB 持久）
 - 语言检测：`navigator.language`，zh* → 中文、en* → English、其他回退中文；手动选择存 `lang` 键
 - 与浏览器扩展版（epubreader 仓库）同源异流：本项目面向 Web 托管独立演化
+- 图标：`icons/icon.svg` 为设计源；各尺寸 PNG（192/512/maskable/apple-touch）按该 SVG 几何精确重绘生成
