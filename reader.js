@@ -198,21 +198,31 @@ const state = {
   theme: ["light","sepia","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: (() => {
     const DEF = { bg: "#fbfaf7", fg: "#292725", ui: "#f5f3ee" };
+    const HEX = v => /^#[0-9a-f]{6}$/i.test(v);
+    const ADV_KEYS = ["fg","muted","bar","border","button","accent"];
     let arr = null;
     try { arr = JSON.parse(localStorage.getItem("customThemes") || "null"); } catch {}
+    try { localStorage.removeItem("sideColor"); } catch {}   /* 留白独立色已废弃, 统一=界面底色 */
     if (!Array.isArray(arr)) {
       try {
         const v = JSON.parse(localStorage.getItem("customTheme") || "null");
         if (validTheme(v)) arr = [{ bg: v.bg, fg: v.fg, ui: v.ui }];
       } catch {}
     }
-    /* 槽位名不持久化, 显示名按当前语言派生(t("customSlotN")) */
-    return [0, 1, 2].map(i => {
-      const s = Array.isArray(arr) ? arr[i] : null;
+    /* 槽位名不持久化(按语言派生); adv为高级覆盖项, 缺省自动派生 */
+    const norm = s => {
       const slot = validTheme(s) ? { bg: s.bg, fg: s.fg, ui: s.ui } : { ...DEF };
-      slot.base = validTheme(s?.base) ? { ...s.base } : { ...slot };
+      slot.adv = {};
+      if (validTheme(s?.base)) {
+        slot.base = { bg: s.base.bg, fg: s.base.fg, ui: s.base.ui, adv: {} };
+        for (const k of ADV_KEYS) if (HEX(s.base.adv?.[k])) slot.base.adv[k] = s.base.adv[k];
+      } else {
+        slot.base = { bg: slot.bg, fg: slot.fg, ui: slot.ui, adv: {} };
+      }
+      for (const k of ADV_KEYS) if (HEX(s?.adv?.[k])) slot.adv[k] = s.adv[k];
       return slot;
-    });
+    };
+    return [0, 1, 2].map(i => norm(Array.isArray(arr) ? arr[i] : null));
   })(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
   tocEntries: [],
@@ -234,7 +244,6 @@ const state = {
     if (localStorage.getItem("contentLimited") != null) return localStorage.getItem("contentLimited") === "1";
     return true;
   })(),
-  sideColor: localStorage.getItem("sideColor") || "",
   sidePinned: localStorage.getItem("sidePinned") === "1"
 };
 
@@ -1687,6 +1696,7 @@ function applyTheme() {
     if (ct) dark = lum(ct.ui) < 0.5;
   }
   document.body.classList.toggle("dark", dark);
+  document.body.classList.toggle("sepia", state.theme === "sepia");
   applyCustomTheme();
   syncThemeChips();
   localStorage.setItem("theme", state.theme);
@@ -1723,14 +1733,23 @@ function applyCustomTheme() {
   const ct = currentCustom();
   if (!ct) return;
   const ui = ct.ui;
-  const dk = lum(ui) < 0.5;
   rs.setProperty("--bg", ui);
-  rs.setProperty("--bar", shade(ui, dk ? 0.07 : -0.05));
-  rs.setProperty("--border", shade(ui, dk ? 0.18 : -0.14));
-  rs.setProperty("--button", shade(ui, dk ? 0.13 : -0.08));
-  rs.setProperty("--fg", dk ? "#ddd8cf" : "#292725");
-  rs.setProperty("--muted", dk ? "#918b81" : "#77736c");
-  rs.setProperty("--accent", dk ? "#c8b99f" : "#635b4f");
+  const adv = ct.adv || {};
+  for (const k of ADV_SHELL_KEYS) rs.setProperty("--" + k, adv[k] || derivedShell(k));
+}
+const ADV_SHELL_KEYS = ["bar","border","button","fg","muted","accent"];
+/* 高级项未覆盖时的派生值(也用作取色器预填预览) */
+function derivedShell(key) {
+  const ui = currentCustom()?.ui ?? "#f5f3ee";
+  const dk = lum(ui) < 0.5;
+  switch (key) {
+    case "bar": return shade(ui, dk ? 0.07 : -0.05);
+    case "border": return shade(ui, dk ? 0.18 : -0.14);
+    case "button": return shade(ui, dk ? 0.13 : -0.08);
+    case "fg": return dk ? "#ddd8cf" : "#292725";
+    case "muted": return dk ? "#918b81" : "#77736c";
+    case "accent": return dk ? "#c8b99f" : "#635b4f";
+  }
 }
 function syncThemeChips() {
   for (const b of document.querySelectorAll(".themeChip[data-theme]"))
@@ -1742,11 +1761,17 @@ function saveCustomThemes() {
   try { localStorage.setItem("customThemes", JSON.stringify(state.customSlots)); } catch {}
   try { localStorage.setItem("customSlot", String(state.customSlotIdx)); } catch {}
 }
+const ADV_IDS = [["advFg","fg"],["advMuted","muted"],["advBar","bar"],["advBorder","border"],["advButton","button"],["advAccent","accent"]];
 function syncCustomPickers() {
-  const ct = currentCustom() || { bg: "#fbfaf7", fg: "#292725", ui: "#f5f3ee" };
+  const ct = currentCustom() || { bg: "#fbfaf7", fg: "#292725", ui: "#f5f3ee", adv: {} };
   $("ctBg").value = ct.bg;
   $("ctFg").value = ct.fg;
   $("ctUi").value = ct.ui;
+  ct.adv ||= {};
+  for (const [id, key] of ADV_IDS) {
+    $(id).value = ct.adv[key] || derivedShell(key);
+    $(id).closest(".advRow").classList.toggle("overridden", !!ct.adv[key]);
+  }
 }
 function renderCustomSlots() {
   const wrap = $("slotChips");
@@ -1831,15 +1856,8 @@ function bindSetting(rangeId, numId, opts) {
 function applySide() {
   const rs = document.documentElement.style;
   rs.setProperty("--content-w", state.contentLimited ? state.contentMax + "px" : "9999px");
-  if (state.sideColor) rs.setProperty("--side-c", state.sideColor);
-  else if (state.theme === "custom") {
-    const ct = currentCustom();
-    if (ct) rs.setProperty("--side-c", ct.bg); else rs.removeProperty("--side-c");
-  }
-  else rs.removeProperty("--side-c");
   localStorage.setItem("contentMax", String(state.contentMax));
   localStorage.setItem("contentLimited", state.contentLimited ? "1" : "0");
-  if (state.sideColor) localStorage.setItem("sideColor", state.sideColor); else localStorage.removeItem("sideColor");
   syncPagedWidth();
 }
 
@@ -1931,10 +1949,10 @@ $("ctReset").onclick = () => {
   const s = currentCustom();
   if (!s) return;
   s.bg = s.base.bg; s.fg = s.base.fg; s.ui = s.base.ui;
+  s.adv = { ...(s.base.adv || {}) };
   saveCustomThemes();
   syncCustomPickers();
   applyTheme();
-  applySide();
   rerenderReader();
 };
 for (const [id, key] of [["ctBg", "bg"], ["ctFg", "fg"], ["ctUi", "ui"]]) {
@@ -1949,14 +1967,38 @@ for (const [id, key] of [["ctBg", "bg"], ["ctFg", "fg"], ["ctUi", "ui"]]) {
   });
   $(id).addEventListener("change", () => rerenderReader());
 }
+/* 高级覆盖项: 选色即固定, ↺ 回到自动派生(仅影响外壳变量, 无需重建iframe) */
+for (const [id, key] of ADV_IDS) {
+  $(id).addEventListener("input", e => {
+    const s = currentCustom();
+    if (!s) return;
+    (s.adv ||= {})[key] = e.target.value;
+    saveCustomThemes();
+    if (state.theme !== "custom") state.theme = "custom";
+    applyTheme();
+    syncCustomPickers();
+  });
+  $(id).closest(".advRow").querySelector(".advAuto").onclick = () => {
+    const s = currentCustom();
+    if (!s?.adv?.[key]) return;
+    delete s.adv[key];
+    saveCustomThemes();
+    applyTheme();
+    syncCustomPickers();
+  };
+}
+$("advToggle").onclick = () => {
+  const open = $("advBlock").hidden;
+  $("advBlock").hidden = !open;
+  $("advToggle").classList.toggle("open", open);
+  $("advToggle").setAttribute("aria-expanded", String(open));
+};
 $("autoBtn").onclick = () => { if (state.book) setAuto(!state.auto); };
 $("speedRange").value = String(state.speed);
 $("speedRange").oninput = e => { state.speed = Number(e.target.value); localStorage.setItem("autoSpeed", e.target.value); };
 $("settingsBtn").onclick = e => { e.stopPropagation(); $("settingsPanel").hidden = !$("settingsPanel").hidden; };
-$("sideColorInput").oninput = e => { state.sideColor = e.target.value; applySide(); };
 $("sideReset").onclick = () => {
-  state.contentLimited = true; state.contentMax = 700; state.sideColor = ""; state.lineHeight = 1.75; state.fontFamily = "serif"; state.fontSize = 18; state.bookFontFirst = true;
-  $("sideColorInput").value = "#f5f3ee";
+  state.contentLimited = true; state.contentMax = 700; state.lineHeight = 1.75; state.fontFamily = "serif"; state.fontSize = 18; state.bookFontFirst = true;
   $("fontFamilySel").value = "serif";
   $("bookFontToggle").checked = true;
   localStorage.setItem("bookFontFirst", "1");
@@ -2054,7 +2096,6 @@ $("viewport").addEventListener("transitionend", e => {
   if (e.target === $("viewport")) syncPagedWidth();
 });
 
-$("sideColorInput").value = state.sideColor || "#f5f3ee";
 $("fontFamilySel").value = state.fontFamily;
 $("bookFontToggle").checked = state.bookFontFirst;
 $("contentMaxToggle").checked = state.contentLimited;

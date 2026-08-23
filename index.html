@@ -67,6 +67,39 @@
       <span class="settingLabel" data-i18n="ctUiLabel">界面底色</span>
       <input id="ctUi" type="color" aria-label="自定义界面底色" data-i18n-aria="colorAriaUi">
     </div>
+    <button id="advToggle" class="advToggle" aria-expanded="false"><span class="advArrow">▸</span> <span data-i18n="advMore">更多颜色</span></button>
+    <div id="advBlock" class="advBlock" hidden>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advFg">界面文字</span>
+        <input id="advFg" type="color" aria-label="界面文字颜色" data-i18n-aria="advFgAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advMuted">次要文字</span>
+        <input id="advMuted" type="color" aria-label="次要文字颜色" data-i18n-aria="advMutedAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advBar">顶栏</span>
+        <input id="advBar" type="color" aria-label="顶栏颜色" data-i18n-aria="advBarAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advBorder">边框</span>
+        <input id="advBorder" type="color" aria-label="边框颜色" data-i18n-aria="advBorderAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advButton">按钮</span>
+        <input id="advButton" type="color" aria-label="按钮颜色" data-i18n-aria="advButtonAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advAccent">强调色</span>
+        <input id="advAccent" type="color" aria-label="强调色" data-i18n-aria="advAccentAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
+    </div>
     <button id="ctReset" class="settingReset" data-i18n="ctReset">重置本槽为初始配色</button>
     <div class="settingSection" data-i18n="secType">排版</div>
     <div class="settingRow">
@@ -108,10 +141,6 @@
       <button id="cwMinus" class="stepBtn" title="减小宽度" data-i18n-title="cwMinusTip">−</button>
       <button id="cwPlus" class="stepBtn" title="增大宽度" data-i18n-title="cwPlusTip">＋</button>
       <input id="contentMaxNum" class="settingNum" type="number" min="480" max="1920" step="10" aria-label="正文宽度数值" data-i18n-aria="contentMaxNumAria">
-    </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="sideColor">留白颜色</span>
-      <input id="sideColorInput" type="color" value="#f5f3ee" aria-label="留白颜色" data-i18n-aria="sideColorAria">
     </div>
     <button id="sideReset" class="settingReset" data-i18n="sideReset">恢复默认</button>
   </div>
