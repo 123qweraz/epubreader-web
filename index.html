@@ -195,6 +195,15 @@
   <script src="i18n.js"></script>
   <script src="pinyin.js"></script>
   <script src="reader.js"></script>
-  <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js"));</script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+      navigator.serviceWorker.addEventListener("message", e => {
+        if (e.data?.type === "shell-version")
+          console.info(`[阅读器] 资源版本 ${e.data.version}` + (e.data.version !== "v8" ? "（若非最新，请再刷新一次）" : ""));
+      });
+      navigator.serviceWorker.controller?.postMessage("version");
+    }
+  </script>
 </body>
 </html>

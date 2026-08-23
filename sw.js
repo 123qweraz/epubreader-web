@@ -1,6 +1,6 @@
 /* EPUB Reader 网页版 Service Worker: 应用外壳离线缓存
    发版时需手动递增 VERSION 以淘汰旧缓存 */
-const VERSION = "v7";
+const VERSION = "v8";
 const CACHE = `epubreader-shell-${VERSION}`;
 const SHELL = [
   "./",
@@ -26,7 +26,15 @@ self.addEventListener("activate", e => {
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll())
+      .then(cs => cs.forEach(c => c.postMessage({ type: "shell-version", version: VERSION })))
   );
+});
+
+/* 页面加载时主动询问当前运行的资源版本(版本握手) */
+self.addEventListener("message", e => {
+  if (e.data === "version" && e.source)
+    e.source.postMessage({ type: "shell-version", version: VERSION });
 });
 
 self.addEventListener("fetch", e => {
