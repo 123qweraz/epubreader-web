@@ -85,7 +85,11 @@ function pyPump() {
   pyPumping = true;
   const schedule = () => {
     const win = $("bookFrame")?.contentWindow;
-    (win && win.requestIdleCallback || setTimeout)(step, 60);
+    /* requestIdleCallback第二参是选项字典{timeout}而非毫秒数(传数字Chrome会抛TypeError杀死泵);
+       必须call(win)防detached调用Illegal invocation; timeout兜底保证页面忙碌时也能推进 */
+    const ric = win?.requestIdleCallback;
+    if (ric) ric.call(win, step, { timeout: 500 });
+    else setTimeout(step, 60);
   };
   const step = () => {
     pyPumping = false;
