@@ -948,13 +948,12 @@ async function renderWholeBook() {
   const {bg, fg} = readerColors();
   if (state.book.isTxt) {
     state.chapterPath = "";
-    const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
     const parts = state.book.txtChapters.map((ch, i) => {
-      const title = ch.showTitle ? `<h2 id="sp${i}">${esc(ch.title)}</h2>` : `<div id="sp${i}" style="height:0"></div>`;
-      return `${title}<div class="content">${esc(ch.lines.join("\n"))}</div>`;
+      const title = ch.showTitle ? `<h2 id="sp${i}">${escTxt(ch.title)}</h2>` : `<div id="sp${i}" style="height:0"></div>`;
+      return `${title}${txtLinesHtml(ch.lines)}`;
     });
     return buildChapterDoc({bg, fg, bodyHtml: parts.join("<hr>\n"),
-      extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:2em 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;} hr{border:0;border-top:1px solid rgba(127,127,127,.25);margin:2.5em 0;}`});
+      extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:2em 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;} ${TXT_LN_CSS} hr{border:0;border-top:1px solid rgba(127,127,127,.25);margin:2.5em 0;}`});
   }
   const parts = [];
   let headCss = "";
@@ -1008,14 +1007,21 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
   </style></head><body>${inner}</body></html>`;
 }
 
+/* TXT正文渲染: 短章pre-wrap整块; 超过2000行逐行块化(.ln), 让拼音观察器可按行粒度调度 */
+const escTxt = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const TXT_SPLIT_LINES = 2000;
+const TXT_LN_CSS = `.lnmode{white-space:normal;} .ln{min-height:1em;white-space:pre-wrap;}`;
+function txtLinesHtml(lines) {
+  if (lines.length <= TXT_SPLIT_LINES) return `<div class="content">${escTxt(lines.join("\n"))}</div>`;
+  return `<div class="content lnmode">` + lines.map(l => `<div class="ln">${escTxt(l)}</div>`).join("") + `</div>`;
+}
 function renderTxtChapter(ch) {
-  const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const {bg, fg} = readerColors();
-  const titleHtml = ch.showTitle ? `<h2>${esc(ch.title)}</h2>` : "";
+  const titleHtml = ch.showTitle ? `<h2>${escTxt(ch.title)}</h2>` : "";
   return buildChapterDoc({
     bg, fg,
-    bodyHtml: `${titleHtml}<div class="content">${esc(ch.lines.join("\n"))}</div>`,
-    extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:0 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;}`
+    bodyHtml: `${titleHtml}${txtLinesHtml(ch.lines)}`,
+    extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:0 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;} ${TXT_LN_CSS}`
   });
 }
 
@@ -1052,6 +1058,7 @@ function updatePageInfo() {
 function applyPagedTransform(instant) {
   if (!pagedCtx) return;
   state.pageIdx = Math.max(0, Math.min(state.pageIdx, pagedCtx.pages - 1));
+  pyLastMove = performance.now();   /* 注音settle门控: 翻页位移与滚动同待遇 */
   syncUnitForPage();
   const { flow } = pagedCtx;
   if (instant) {
@@ -1333,17 +1340,18 @@ async function showChapter(index, fragment = "", opts = {}) {
 }
 
 function frameScrollHandler() {
+  pyLastMove = performance.now();   /* 注音settle门控: 滚动中不出批 */
   scheduleProgressSave();
   scheduleScrollSync();
 }
 
 function runAfterLoad(win, doc, fragment, opts, ratio) {
   const frame = $("bookFrame");
-  /* 拼音标注: 库已就绪立即注; 未就绪(开书即带开关)则后台加载后补注 */
+  /* 拼音标注: 库已就绪立即派发; 未就绪(开书即带开关)则后台加载后补注 */
   if (state.showPinyin) {
-    if (window.pinyinPro) annotateIframe(doc);
+    if (window.pinyinPro) pyDispatch(doc);
     else ensurePinyinLib().then(() => {
-      if ($("bookFrame").contentDocument === doc) annotateIframe(doc);
+      if ($("bookFrame").contentDocument === doc) pyDispatch(doc);
     }).catch(() => {});
   }
   autoJumping = false;
@@ -1858,41 +1866,137 @@ function ensurePinyinLib() {
   return pinyinLibPromise;
 }
 const HAN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
-/* 遍历iframe文本节点, 连续汉字段逐字包ruby; 纯DOM构建避免转义问题 */
-function annotateIframe(doc) {
-  if (!doc?.body || doc.__pinyinDone || !window.pinyinPro) return;
-  doc.__pinyinDone = true;
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+/* 注音粒度参数: 小目标同步直注 / 单块上限 / 观察器邻域(纵向px, 横向%视宽) / 批预算 */
+const PY_SMALL = 20000, PY_CAP = 80000, PY_LOOK_V = "1500px", PY_LOOK_H = "60%";
+const PY_BATCH_MS = 12, PY_BATCH_CHARS = 1200, PY_SETTLE_MS = 150;
+let pyQueue = [], pyPumping = false, pyLastMove = 0;
+
+function pyCountHan(el) {
+  const m = (el.textContent || "").match(new RegExp(HAN_RE.source, "g"));
+  return m ? m.length : 0;
+}
+function pyWalker(doc, root) {
+  return doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: n => HAN_RE.test(n.nodeValue) && !n.parentElement.closest("ruby,rt,script,style")
       ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
   });
+}
+/* 单文本节点: 连续汉字段逐字包ruby(纯DOM构建避免转义问题), 返回处理的汉字数 */
+function pyAnnotateNode(node) {
+  const doc = node.ownerDocument;
+  const text = node.nodeValue;
+  const frag = doc.createDocumentFragment();
+  let last = 0, chars = 0;
+  for (let i = 0; i < text.length;) {
+    if (!HAN_RE.test(text[i])) { i++; continue; }
+    let j = i + 1;
+    while (j < text.length && HAN_RE.test(text[j])) j++;
+    const seg = text.slice(i, j);
+    if (i > last) frag.appendChild(doc.createTextNode(text.slice(last, i)));
+    const pys = window.pinyinPro.pinyin(seg, { type: "array" });
+    for (let k = 0; k < seg.length; k++) {
+      const rb = doc.createElement("ruby");
+      rb.textContent = seg[k];
+      const rt = doc.createElement("rt");
+      rt.textContent = pys[k] || "";
+      rb.appendChild(rt);
+      frag.appendChild(rb);
+    }
+    chars += seg.length;
+    last = j; i = j;
+  }
+  if (!last) return 0;
+  if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
+  node.replaceWith(frag);
+  return chars;
+}
+function pyAnnotateRootSync(doc, root) {
+  const walker = pyWalker(doc, root);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const node of nodes) {
-    const text = node.nodeValue;
-    const frag = doc.createDocumentFragment();
-    let last = 0;
-    for (let i = 0; i < text.length;) {
-      if (!HAN_RE.test(text[i])) { i++; continue; }
-      let j = i + 1;
-      while (j < text.length && HAN_RE.test(text[j])) j++;
-      const seg = text.slice(i, j);
-      if (i > last) frag.appendChild(doc.createTextNode(text.slice(last, i)));
-      const pys = window.pinyinPro.pinyin(seg, { type: "array" });
-      for (let k = 0; k < seg.length; k++) {
-        const rb = doc.createElement("ruby");
-        rb.textContent = seg[k];
-        const rt = doc.createElement("rt");
-        rt.textContent = pys[k] || "";
-        rb.appendChild(rt);
-        frag.appendChild(rb);
-      }
-      last = j; i = j;
-    }
-    if (!last) continue;
-    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
-    node.replaceWith(frag);
+  for (const n of nodes) pyAnnotateNode(n);
+}
+/* 目标块收集: 整书模式章节区/TXT行块下沉, 无结构回退body */
+function collectPyTargets(doc) {
+  const secs = [...doc.body.querySelectorAll(".spinePart, .content")];
+  if (!secs.length) return [doc.body];
+  const out = [];
+  for (const s of secs) {
+    const lns = s.querySelectorAll(":scope > .ln");
+    out.push(...(lns.length ? lns : [s]));
   }
+  return out;
+}
+/* 渐进泵: rIC分批啃队列; 滚动/翻页未停稳不出批, 出批前剪枝丢掉已远离的目标 */
+function pyPump() {
+  if (pyPumping) return;
+  pyPumping = true;
+  const schedule = () => {
+    const win = $("bookFrame")?.contentWindow;
+    (win && win.requestIdleCallback || setTimeout)(step, 60);
+  };
+  const step = () => {
+    pyPumping = false;
+    if (!state.showPinyin) { pyQueue = []; return; }
+    const frame = $("bookFrame");
+    if (!frame?.contentDocument?.body) { pyQueue = []; return; }
+    if (performance.now() - pyLastMove < PY_SETTLE_MS) { schedule(); return; }
+    const doc = frame.contentDocument;
+    /* 剪枝: 文档不匹配或几何上已远离当前视口邻域的目标直接丢弃 */
+    const vw = frame.clientWidth || 800, vh = frame.clientHeight || 600;
+    pyQueue = pyQueue.filter(it => {
+      if (it.doc !== doc || !it.el.isConnected) return false;
+      const r = it.el.getBoundingClientRect();
+      return r.bottom > -vh * 2 && r.top < vh * 3 && r.right > -vw * 1.5 && r.left < vw * 2.5;
+    });
+    const deadline = performance.now() + PY_BATCH_MS;
+    let chars = 0;
+    while (pyQueue.length && performance.now() < deadline && chars < PY_BATCH_CHARS) {
+      const it = pyQueue[0];
+      it.walker ||= pyWalker(it.doc, it.el);
+      const n = it.walker.nextNode();
+      if (!n) { pyQueue.shift(); continue; }
+      chars += pyAnnotateNode(n);
+    }
+    if (pyQueue.length) schedule();
+  };
+  step();
+}
+function pyEnqueue(doc, el) {
+  if (el.dataset.pyQ) return;
+  el.dataset.pyQ = "1";
+  pyQueue.push({ doc, el });
+  pyPump();
+}
+/* 邻域观察器: 必须用iframe自己的构造器(跨文档); 滚动模式吃纵向margin, 翻页模式transform位移同样触发 */
+function pySetupLazy(doc, targets, counts) {
+  if (doc.__pyIO) return;
+  doc.__pyIO = true;
+  const io = new doc.defaultView.IntersectionObserver(entries => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      io.unobserve(en.target);
+      if (Number(en.target.dataset.pyCnt || 0) <= PY_CAP) pyEnqueue(doc, en.target);
+    }
+  }, { rootMargin: `${PY_LOOK_V} ${PY_LOOK_H} ${PY_LOOK_V} ${PY_LOOK_H}` });
+  for (let i = 0; i < targets.length; i++) {
+    if (!counts[i]) continue;
+    targets[i].dataset.pyCnt = counts[i];
+    io.observe(targets[i]);
+  }
+}
+/* 派发: 总字数低于阈值全量直注(覆盖日常章节); 否则多块结构走IO懒注音 */
+function pyDispatch(doc) {
+  if (!window.pinyinPro || !doc?.body) return;
+  const targets = collectPyTargets(doc);
+  let total = 0;
+  const counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; });
+  if (total <= PY_SMALL) {
+    for (const el of targets) pyAnnotateRootSync(doc, el);
+    return;
+  }
+  if (targets.length === 1 && total > PY_CAP) { toast(t("pinyinTooLong")); return; }
+  pySetupLazy(doc, targets, counts);
 }
 function restyleWholeDoc() {
   const doc = $("bookFrame").contentDocument;
@@ -2117,6 +2221,7 @@ $("pinyinToggle").addEventListener("change", e => {
   };
   if (!e.target.checked) {
     state.showPinyin = false;
+    pyQueue = [];
     localStorage.setItem("showPinyin", "0");
     forceRebuild();
     return;
