@@ -1750,8 +1750,11 @@ function derivePalette(paperHex) {
   };
 }
 function applyCustomTheme() {
-  const rs = document.documentElement.style;
-  for (const v of ["--bg","--bar","--border","--button","--fg","--muted","--accent"]) rs.removeProperty(v);
+  /* 变量必须内联在 body 上: body.dark/.sepia 样式表块声明在 body 自身,
+     按 CSS 级联规则会压过从 html 继承的值, 导致深色纸面被内置常量顶掉 */
+  const rs = document.body.style;
+  const VARS = ["--bg","--bar","--border","--button","--fg","--muted","--accent","--reader-bg"];
+  for (const v of VARS) rs.removeProperty(v);
   if (state.theme !== "custom") return;
   const ct = currentCustom();
   if (!ct) return;
@@ -1767,6 +1770,7 @@ function applyCustomTheme() {
   rs.setProperty("--fg", adv.fg || ct.fg);   /* 界面文字默认随阅读文字(内置主题同口径) */
   rs.setProperty("--muted", adv.muted || d.muted);
   rs.setProperty("--accent", adv.accent || d.accent);
+  rs.setProperty("--reader-bg", ct.bg);
 }
 function syncThemeChips() {
   for (const b of document.querySelectorAll(".themeChip[data-theme]"))
