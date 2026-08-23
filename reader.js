@@ -186,9 +186,6 @@ function shade(hex, f) {
   const c = x => Math.round(x + (target - x) * p).toString(16).padStart(2, "0");
   return "#" + c(r) + c(g) + c(b);
 }
-function validTheme(v) {
-  return v && /^#[0-9a-f]{6}$/i.test(v.bg) && /^#[0-9a-f]{6}$/i.test(v.fg) && /^#[0-9a-f]{6}$/i.test(v.ui);
-}
 const state = {
   zip: null, opfPath: "", chapterPath: "", book: null, urls: new Map(), chapterIndex: 0,
   fontSize: (() => { const v = Number(localStorage.getItem("fontSize")); return v >= 10 && v <= 36 ? v : 18; })(),
@@ -197,29 +194,18 @@ const state = {
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
   theme: ["light","sepia","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: (() => {
-    const DEF = { bg: "#fbfaf7", fg: "#292725", ui: "#f5f3ee" };
+    const DEF = { bg: "#fbfaf7", fg: "#292725" };
     const HEX = v => /^#[0-9a-f]{6}$/i.test(v);
-    const ADV_KEYS = ["fg","muted","bar","border","button","accent"];
+    /* 高级覆盖项白名单(其余外壳色全部由纸面色派生) */
+    const ADV_KEYS = ["ui","fg","muted","border","button","accent"];
     let arr = null;
     try { arr = JSON.parse(localStorage.getItem("customThemes") || "null"); } catch {}
-    try { localStorage.removeItem("sideColor"); } catch {}   /* 留白独立色已废弃, 统一=界面底色 */
-    if (!Array.isArray(arr)) {
-      try {
-        const v = JSON.parse(localStorage.getItem("customTheme") || "null");
-        if (validTheme(v)) arr = [{ bg: v.bg, fg: v.fg, ui: v.ui }];
-      } catch {}
-    }
-    /* 槽位名不持久化(按语言派生); adv为高级覆盖项, 缺省自动派生 */
+    /* 槽位名不持久化(按语言派生); 界面配色全部由纸面色联动派生, adv为二次接管 */
     const norm = s => {
-      const slot = validTheme(s) ? { bg: s.bg, fg: s.fg, ui: s.ui } : { ...DEF };
+      const slot = (s && HEX(s.bg) && HEX(s.fg)) ? { bg: s.bg, fg: s.fg } : { ...DEF };
       slot.adv = {};
-      if (validTheme(s?.base)) {
-        slot.base = { bg: s.base.bg, fg: s.base.fg, ui: s.base.ui, adv: {} };
-        for (const k of ADV_KEYS) if (HEX(s.base.adv?.[k])) slot.base.adv[k] = s.base.adv[k];
-      } else {
-        slot.base = { bg: slot.bg, fg: slot.fg, ui: slot.ui, adv: {} };
-      }
       for (const k of ADV_KEYS) if (HEX(s?.adv?.[k])) slot.adv[k] = s.adv[k];
+      slot.base = { bg: slot.bg, fg: slot.fg, adv: {} };
       return slot;
     };
     return [0, 1, 2].map(i => norm(Array.isArray(arr) ? arr[i] : null));
@@ -1693,7 +1679,7 @@ function applyTheme() {
   let dark = state.theme === "dark";
   if (state.theme === "custom") {
     const ct = currentCustom();
-    if (ct) dark = lum(ct.ui) < 0.5;
+    if (ct) dark = lum(ct.bg) < 0.5;
   }
   document.body.classList.toggle("dark", dark);
   document.body.classList.toggle("sepia", state.theme === "sepia");
@@ -1726,30 +1712,61 @@ function applyI18n() {
   syncLangChips();
   renderShelf();
 }
+function hexToHsl(hex) {
+  const [r, g, b] = hexToRgb(hex).map(v => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+    else if (max === g) h = ((b - r) / d + 2) * 60;
+    else h = ((r - g) / d + 4) * 60;
+  }
+  return [h, s * 100, l * 100];
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  const to = v => Math.round(f(v) * 255).toString(16).padStart(2, "0");
+  return "#" + to(0) + to(8) + to(4);
+}
+/* 纸面为锚的全套外壳派生: 界面底色同色相深一档; 强调色微偏补色(+30°), 中性纸回落暖灰 */
+function derivePalette(paperHex) {
+  const [h, s, l] = hexToHsl(paperHex);
+  const shell = hslToHex(h, Math.max(0, s - 4), Math.min(94, Math.max(8, l - 4)));
+  const dk = lum(shell) < 0.5;
+  const ah = (h + 30) % 360;
+  return {
+    ui: shell,
+    border: shade(shell, dk ? 0.18 : -0.14),
+    button: shade(shell, dk ? 0.13 : -0.08),
+    muted: dk ? "#918b81" : "#77736c",
+    accent: s < 8 ? (dk ? "#8a857b" : "#635b4f")
+      : dk ? hslToHex(ah, Math.min(s + 20, 70), Math.min(l + 25, 78))
+           : hslToHex(ah, Math.min(s + 20, 60), Math.max(30, Math.min(46, l - 45)))
+  };
+}
 function applyCustomTheme() {
   const rs = document.documentElement.style;
   for (const v of ["--bg","--bar","--border","--button","--fg","--muted","--accent"]) rs.removeProperty(v);
   if (state.theme !== "custom") return;
   const ct = currentCustom();
   if (!ct) return;
-  const ui = ct.ui;
-  rs.setProperty("--bg", ui);
   const adv = ct.adv || {};
-  for (const k of ADV_SHELL_KEYS) rs.setProperty("--" + k, adv[k] || derivedShell(k));
-}
-const ADV_SHELL_KEYS = ["bar","border","button","fg","muted","accent"];
-/* 高级项未覆盖时的派生值(也用作取色器预填预览) */
-function derivedShell(key) {
-  const ui = currentCustom()?.ui ?? "#f5f3ee";
-  const dk = lum(ui) < 0.5;
-  switch (key) {
-    case "bar": return shade(ui, dk ? 0.07 : -0.05);
-    case "border": return shade(ui, dk ? 0.18 : -0.14);
-    case "button": return shade(ui, dk ? 0.13 : -0.08);
-    case "fg": return dk ? "#ddd8cf" : "#292725";
-    case "muted": return dk ? "#918b81" : "#77736c";
-    case "accent": return dk ? "#c8b99f" : "#635b4f";
-  }
+  const d = derivePalette(ct.bg);
+  const ui = adv.ui || d.ui;
+  const [r, g, b] = hexToRgb(ui);
+  rs.setProperty("--bg", ui);
+  /* 顶栏=界面底色的半透明形态, 不作为独立颜色暴露 */
+  rs.setProperty("--bar", `rgba(${r},${g},${b},${lum(ui) < .5 ? .95 : .94})`);
+  rs.setProperty("--border", adv.border || d.border);
+  rs.setProperty("--button", adv.button || d.button);
+  rs.setProperty("--fg", adv.fg || ct.fg);   /* 界面文字默认随阅读文字(内置主题同口径) */
+  rs.setProperty("--muted", adv.muted || d.muted);
+  rs.setProperty("--accent", adv.accent || d.accent);
 }
 function syncThemeChips() {
   for (const b of document.querySelectorAll(".themeChip[data-theme]"))
@@ -1761,15 +1778,15 @@ function saveCustomThemes() {
   try { localStorage.setItem("customThemes", JSON.stringify(state.customSlots)); } catch {}
   try { localStorage.setItem("customSlot", String(state.customSlotIdx)); } catch {}
 }
-const ADV_IDS = [["advFg","fg"],["advMuted","muted"],["advBar","bar"],["advBorder","border"],["advButton","button"],["advAccent","accent"]];
+const ADV_IDS = [["advUi","ui"],["advFg","fg"],["advMuted","muted"],["advBorder","border"],["advButton","button"],["advAccent","accent"]];
 function syncCustomPickers() {
-  const ct = currentCustom() || { bg: "#fbfaf7", fg: "#292725", ui: "#f5f3ee", adv: {} };
+  const ct = currentCustom() || { bg: "#fbfaf7", fg: "#292725", adv: {} };
   $("ctBg").value = ct.bg;
   $("ctFg").value = ct.fg;
-  $("ctUi").value = ct.ui;
   ct.adv ||= {};
+  const d = derivePalette(ct.bg);
   for (const [id, key] of ADV_IDS) {
-    $(id).value = ct.adv[key] || derivedShell(key);
+    $(id).value = ct.adv[key] || d[key];
     $(id).closest(".advRow").classList.toggle("overridden", !!ct.adv[key]);
   }
 }
@@ -1948,14 +1965,14 @@ for (const b of document.querySelectorAll(".langChip")) {
 $("ctReset").onclick = () => {
   const s = currentCustom();
   if (!s) return;
-  s.bg = s.base.bg; s.fg = s.base.fg; s.ui = s.base.ui;
+  s.bg = s.base.bg; s.fg = s.base.fg;
   s.adv = { ...(s.base.adv || {}) };
   saveCustomThemes();
   syncCustomPickers();
   applyTheme();
   rerenderReader();
 };
-for (const [id, key] of [["ctBg", "bg"], ["ctFg", "fg"], ["ctUi", "ui"]]) {
+for (const [id, key] of [["ctBg", "bg"], ["ctFg", "fg"]]) {
   $(id).addEventListener("input", e => {
     const s = currentCustom();
     if (!s) return;
@@ -1964,6 +1981,7 @@ for (const [id, key] of [["ctBg", "bg"], ["ctFg", "fg"], ["ctUi", "ui"]]) {
     if (state.theme !== "custom") state.theme = "custom";
     applyTheme();
     applySide();
+    syncCustomPickers();   /* 纸面色变了, 高级区派生预览同步刷新 */
   });
   $(id).addEventListener("change", () => rerenderReader());
 }

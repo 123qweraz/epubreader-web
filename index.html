@@ -63,12 +63,13 @@
       <span class="settingLabel" data-i18n="ctFgLabel">文字颜色</span>
       <input id="ctFg" type="color" aria-label="自定义文字颜色" data-i18n-aria="colorAriaFg">
     </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="ctUiLabel">界面底色</span>
-      <input id="ctUi" type="color" aria-label="自定义界面底色" data-i18n-aria="colorAriaUi">
-    </div>
     <button id="advToggle" class="advToggle" aria-expanded="false"><span class="advArrow">▸</span> <span data-i18n="advMore">更多颜色</span></button>
     <div id="advBlock" class="advBlock" hidden>
+      <div class="advRow">
+        <span class="settingLabel" data-i18n="advUi">界面底色</span>
+        <input id="advUi" type="color" aria-label="界面底色" data-i18n-aria="advUiAria">
+        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      </div>
       <div class="advRow">
         <span class="settingLabel" data-i18n="advFg">界面文字</span>
         <input id="advFg" type="color" aria-label="界面文字颜色" data-i18n-aria="advFgAria">
@@ -77,11 +78,6 @@
       <div class="advRow">
         <span class="settingLabel" data-i18n="advMuted">次要文字</span>
         <input id="advMuted" type="color" aria-label="次要文字颜色" data-i18n-aria="advMutedAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
-      </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advBar">顶栏</span>
-        <input id="advBar" type="color" aria-label="顶栏颜色" data-i18n-aria="advBarAria">
         <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
       </div>
       <div class="advRow">
