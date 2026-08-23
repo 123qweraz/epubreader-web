@@ -194,6 +194,7 @@ const state = {
   lineHeight: Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75)),
   fontFamily: localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif",
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
+  showPinyin: localStorage.getItem("showPinyin") === "1",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: (() => {
     const DEF = { bg: "#fbfaf7", fg: "#292725" };
@@ -991,6 +992,9 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
      强制模式: 注入回书籍样式之后并加!important做正文级替换(保留书籍标题专用字体与图标字体) */
   const preFont = state.bookFontFirst ? `<style>body{font-family:${fontFamilyCss()};}</style>` : "";
   const famDecl = state.bookFontFirst ? "" : `font-family:${fontFamilyCss()} !important;`;
+  /* 拼音注音: rt继承正文色降透明度(任意主题自适应); 行高不足1.9时抬升避免上下行注音挤压 */
+  const pinyinCss = state.showPinyin
+    ? `<style>ruby{ruby-position:over;}rt{font-size:.55em;opacity:.7;user-select:none;}body{line-height:max(${state.lineHeight},1.9);}</style>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${BOOK_CSP}">${preFont}${headCss}<style>
     html,body{margin:0;padding:0;background:${bg};color:${fg};}
     body{${famDecl}font-size:${state.fontSize}px;line-height:${state.lineHeight};padding:48px max(24px,5vw);box-sizing:border-box;min-height:100vh;overflow-y:auto;overflow-x:hidden;}
@@ -1000,6 +1004,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     html{scroll-behavior:smooth;}
     ${extraCss}
     ${pagedStyle}
+    ${pinyinCss}
   </style></head><body>${inner}</body></html>`;
 }
 
@@ -1334,6 +1339,13 @@ function frameScrollHandler() {
 
 function runAfterLoad(win, doc, fragment, opts, ratio) {
   const frame = $("bookFrame");
+  /* 拼音标注: 库已就绪立即注; 未就绪(开书即带开关)则后台加载后补注 */
+  if (state.showPinyin) {
+    if (window.pinyinPro) annotateIframe(doc);
+    else ensurePinyinLib().then(() => {
+      if ($("bookFrame").contentDocument === doc) annotateIframe(doc);
+    }).catch(() => {});
+  }
   autoJumping = false;
   clearTimeout(autoJumpTimer);
   autoChapterStart = performance.now();
@@ -1832,6 +1844,56 @@ function rerenderReader() {
   else safeShowUnit(state.unitIdx, {restoreRatio:true});
 }
 
+/* ---- 拼音标注: 懒加载 pinyin-pro(vendor本地文件, 首次开启才拉取, SW缓存后离线可用) ---- */
+let pinyinLibPromise = null;
+function ensurePinyinLib() {
+  if (window.pinyinPro) return Promise.resolve();
+  pinyinLibPromise ||= new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "vendor/pinyin-pro.min.js";
+    s.onload = resolve;
+    s.onerror = () => { pinyinLibPromise = null; reject(new Error("pinyin lib load failed")); };
+    document.head.appendChild(s);
+  });
+  return pinyinLibPromise;
+}
+const HAN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+/* 遍历iframe文本节点, 连续汉字段逐字包ruby; 纯DOM构建避免转义问题 */
+function annotateIframe(doc) {
+  if (!doc?.body || doc.__pinyinDone || !window.pinyinPro) return;
+  doc.__pinyinDone = true;
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => HAN_RE.test(n.nodeValue) && !n.parentElement.closest("ruby,rt,script,style")
+      ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    const frag = doc.createDocumentFragment();
+    let last = 0;
+    for (let i = 0; i < text.length;) {
+      if (!HAN_RE.test(text[i])) { i++; continue; }
+      let j = i + 1;
+      while (j < text.length && HAN_RE.test(text[j])) j++;
+      const seg = text.slice(i, j);
+      if (i > last) frag.appendChild(doc.createTextNode(text.slice(last, i)));
+      const pys = window.pinyinPro.pinyin(seg, { type: "array" });
+      for (let k = 0; k < seg.length; k++) {
+        const rb = doc.createElement("ruby");
+        rb.textContent = seg[k];
+        const rt = doc.createElement("rt");
+        rt.textContent = pys[k] || "";
+        rb.appendChild(rt);
+        frag.appendChild(rb);
+      }
+      last = j; i = j;
+    }
+    if (!last) continue;
+    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
+    node.replaceWith(frag);
+  }
+}
 function restyleWholeDoc() {
   const doc = $("bookFrame").contentDocument;
   const b = doc?.body;
@@ -2043,6 +2105,31 @@ $("bookFontToggle").onchange = e => {
     rerenderReader();
   }
 };
+$("pinyinToggle").addEventListener("change", e => {
+  /* ruby元素烙在iframe DOM里, 开关切换都走整体重建(整书模式失效缓存), restoreRatio保持阅读位置 */
+  const forceRebuild = () => {
+    if (state.renderWhole && state.wholeLoaded) {
+      state.wholeLoaded = false;
+      safeShowUnit(state.unitIdx, { restoreRatio: true });
+    } else {
+      rerenderReader();
+    }
+  };
+  if (!e.target.checked) {
+    state.showPinyin = false;
+    localStorage.setItem("showPinyin", "0");
+    forceRebuild();
+    return;
+  }
+  ensurePinyinLib().then(() => {
+    state.showPinyin = true;
+    localStorage.setItem("showPinyin", "1");
+    forceRebuild();
+  }).catch(() => {
+    e.target.checked = false;
+    toast(t("pinyinLoadFail"));
+  });
+});
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
   key: "fontSize", min: 10, max: 36,
@@ -2124,6 +2211,7 @@ $("viewport").addEventListener("transitionend", e => {
 
 $("fontFamilySel").value = state.fontFamily;
 $("bookFontToggle").checked = state.bookFontFirst;
+$("pinyinToggle").checked = state.showPinyin;
 $("contentMaxToggle").checked = state.contentLimited;
 syncContentInputs();
 syncCustomPickers();
