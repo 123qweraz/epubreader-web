@@ -236,7 +236,8 @@ const state = {
     if (localStorage.getItem("contentLimited") != null) return localStorage.getItem("contentLimited") === "1";
     return true;
   })(),
-  sidePinned: localStorage.getItem("sidePinned") === "1"
+  sidePinned: localStorage.getItem("sidePinned") === "1",
+  settingsPinned: localStorage.getItem("settingsPinned") === "1"
 };
 
 /* 动态切换的内联图标(静态图标直接写在HTML里) */
@@ -407,7 +408,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","shelfView","autoSpeed","contentMax","contentLimited","sidePinned"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -488,6 +489,8 @@ function restorePrefsFromStorage() {
   })();
   state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
   state.sidePinned = localStorage.getItem("sidePinned") === "1";
+  state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
+  syncSettingsPinned();
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
   syncViewChips();
@@ -505,6 +508,7 @@ function syncAllPrefsUI() {
   syncLineHeight();
   syncContentMax();
   syncCustomPickers();
+  syncSettingsPinned();
   applySide();
   applyTheme();
   applyI18n();
@@ -1946,7 +1950,7 @@ function toast(msg, opts = {}) {
 
 function closeOverlays() {
   if (!state.sidePinned) $("sidebar").classList.remove("open");
-  $("settingsPanel").hidden = true;
+  if (!state.settingsPinned) setSettingsOpen(false);
   syncOverlayAria();
 }
 
@@ -2166,7 +2170,7 @@ function setAuto(on) {
 function handleKey(e) {
   const el = e.target;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) {
-    if (e.key === "Escape") { el.blur?.(); $("settingsPanel").hidden = true; syncOverlayAria(); }
+    if (e.key === "Escape") { el.blur?.(); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
     return;
   }
   const paged = state.readMode === "paged";
@@ -2425,7 +2429,7 @@ function syncOverlayAria() {
   const sbOpen = $("sidebar").classList.contains("open");
   $("tocBtn").setAttribute("aria-expanded", String(sbOpen && !$("toc").hidden));
   $("searchBtn").setAttribute("aria-expanded", String(sbOpen && !$("searchPage").hidden));
-  $("settingsBtn").setAttribute("aria-expanded", String(!$("settingsPanel").hidden));
+  $("settingsBtn").setAttribute("aria-expanded", String($("settingsPanel").classList.contains("open")));
 }
 function switchSideTab(tab) {
   $("tabToc").classList.toggle("active", tab === "toc");
@@ -2550,10 +2554,24 @@ $("advToggle").onclick = () => {
 $("autoBtn").onclick = () => { if (state.book) setAuto(!state.auto); };
 $("speedRange").value = String(state.speed);
 $("speedRange").oninput = e => { state.speed = Number(e.target.value); localStorage.setItem("autoSpeed", e.target.value); };
+/* 设置抽屉开合(与目录侧栏同范式): .open类驱动, 固定态不受外点/Esc影响 */
+function setSettingsOpen(on) {
+  $("settingsPanel").classList.toggle("open", on);
+  syncOverlayAria();
+}
+function syncSettingsPinned() {
+  $("pinSettings").classList.toggle("active", state.settingsPinned);
+  $("pinSettings").setAttribute("aria-pressed", String(state.settingsPinned));
+  $("settingsPanel").classList.toggle("pinned", state.settingsPinned);
+}
 $("settingsBtn").onclick = e => {
   e.stopPropagation();
-  $("settingsPanel").hidden = !$("settingsPanel").hidden;
-  syncOverlayAria();
+  setSettingsOpen(!$("settingsPanel").classList.contains("open"));
+};
+$("pinSettings").onclick = () => {
+  state.settingsPinned = !state.settingsPinned;
+  try { localStorage.setItem("settingsPinned", state.settingsPinned ? "1" : "0"); } catch {}
+  syncSettingsPinned();
 };
 $("sideReset").onclick = () => {
   state.contentLimited = true; state.contentMax = 700; state.lineHeight = 1.75; state.fontFamily = "serif"; state.fontSize = 18; state.bookFontFirst = true;
@@ -2640,7 +2658,7 @@ $("contentMaxToggle").onchange = e => {
 };
 document.addEventListener("click", e => {
   const p = $("settingsPanel");
-  if (!p.hidden && !p.contains(e.target) && e.target !== $("settingsBtn")) p.hidden = true;
+  if (p.classList.contains("open") && !state.settingsPinned && !p.contains(e.target) && e.target !== $("settingsBtn")) setSettingsOpen(false);
   syncOverlayAria();
 });
 $("main").addEventListener("click", closeOverlays);

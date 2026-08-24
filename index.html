@@ -29,12 +29,14 @@
     </div>
   </header>
 
-  <div id="settingsPanel" class="settingsPanel" hidden>
+  <div id="settingsPanel" class="settingsPanel">
     <div class="setTabs" role="tablist" aria-label="设置分区">
       <button class="setTab active" role="tab" aria-selected="true" data-tab="appearance" data-i18n="tabAppearance">外观</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="layout" data-i18n="tabLayout">排版</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="backup" data-i18n="tabBackup">备份</button>
+      <button id="pinSettings" title="固定设置面板" aria-label="固定/浮动设置面板" aria-pressed="false" data-i18n-title="pinTip" data-i18n-aria="pinAria"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3.5 3.5H6.5L10 10z"/><line x1="12" y1="13.5" x2="12" y2="20"/><line x1="7" y1="20" x2="17" y2="20"/></svg></button>
     </div>
+    <div class="setPages">
     <div class="setPage" data-page="appearance">
     <div class="settingSection">Language 语言</div>
     <div class="settingRow">
@@ -166,6 +168,8 @@
       <input id="contentMaxNum" class="settingNum" type="number" min="480" max="1920" step="10" aria-label="正文宽度数值" data-i18n-aria="contentMaxNumAria">
     </div>
     <button id="sideReset" class="settingReset" data-i18n="sideReset">恢复默认</button>
+    </div>
+    </div>
     </div>
   </div>
 

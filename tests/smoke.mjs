@@ -162,10 +162,19 @@ window.__buildEpub = (title, padTo = 0) => {
   ok(await evalJs(`document.getElementById("relinkBtn").hidden === true`), "恢复按钮空库时隐藏");
   ok(await evalJs(`document.getElementById("searchStatus").getAttribute("role") === "status"`), "searchStatus 有 role=status");
 
-  /* ---- 2. 弹层 aria 同步 ---- */
+  /* ---- 2. 弹层 aria 同步 + 设置抽屉固定 ---- */
   await evalJs(`document.getElementById("settingsBtn").click()`);
-  ok(await evalJs(`!document.getElementById("settingsPanel").hidden && document.getElementById("settingsBtn").getAttribute("aria-expanded")==="true"`), "设置面板开→aria-expanded=true");
+  ok(await evalJs(`document.getElementById("settingsPanel").classList.contains("open") && document.getElementById("settingsBtn").getAttribute("aria-expanded")==="true"`), "设置抽屉开→aria-expanded=true");
   ok(await evalJs(`document.body.classList.contains("dark") === false`), "初始非深色");
+  await evalJs(`document.getElementById("pinSettings").click()`);
+  await sleep(50);
+  ok(await evalJs(`document.getElementById("pinSettings").classList.contains("active") && document.getElementById("settingsPanel").classList.contains("pinned") && localStorage.getItem("settingsPinned")==="1"`), "图钉固定态生效并持久化");
+  await evalJs(`document.getElementById("main").click()`);
+  await sleep(50);
+  ok(await evalJs(`document.getElementById("settingsPanel").classList.contains("open")`), "固定后主区域点击不关闭");
+  await evalJs(`document.getElementById("pinSettings").click()`);
+  await sleep(50);
+  ok(await evalJs(`!document.getElementById("pinSettings").classList.contains("active") && localStorage.getItem("settingsPinned")==="0"`), "取消固定恢复");
   await evalJs(`[...document.querySelectorAll(".themeChip[data-theme]")].find(b=>b.dataset.theme==="dark").click()`);
   await sleep(100);
   ok(await evalJs(`document.body.classList.contains("dark") && document.getElementById("settingsBtn").getAttribute("aria-expanded")==="true"`), "深色主题生效");
@@ -175,7 +184,7 @@ window.__buildEpub = (title, padTo = 0) => {
   await sleep(50);
   ok(await evalJs(`document.querySelector('meta[name="theme-color"]').content === "#eee4c9"`), "theme-color 跟随羊皮纸");
   await evalJs(`document.getElementById("settingsBtn").click()`);
-  ok(await evalJs(`document.getElementById("settingsPanel").hidden && document.getElementById("settingsBtn").getAttribute("aria-expanded")==="false"`), "设置面板关→aria-expanded=false");
+  ok(await evalJs(`!document.getElementById("settingsPanel").classList.contains("open") && document.getElementById("settingsBtn").getAttribute("aria-expanded")==="false"`), "设置抽屉关→aria-expanded=false");
 
   /* ---- 3. 语言切换与 i18n ---- */
   await evalJs(`[...document.querySelectorAll(".langChip")].find(b=>b.dataset.lang==="en").click()`);
