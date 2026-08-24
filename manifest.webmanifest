@@ -6,6 +6,16 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "launch_handler": { "client_mode": "focus-existing" },
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/epub+zip": [".epub"],
+        "text/plain": [".txt"]
+      }
+    }
+  ],
   "background_color": "#635b4f",
   "theme_color": "#635b4f",
   "icons": [

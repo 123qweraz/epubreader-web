@@ -1,4 +1,4 @@
-/* Simple EPUB Reader 0.2 — dependency-free Firefox extension. */
+/* Simple EPUB Reader — 纯本地零依赖网页版阅读器(EPUB/TXT)。 */
 const $ = (id) => document.getElementById(id);
 
 const CRC_TABLE = (() => {
@@ -188,6 +188,24 @@ function shade(hex, f) {
   const c = x => Math.round(x + (target - x) * p).toString(16).padStart(2, "0");
   return "#" + c(r) + c(g) + c(b);
 }
+/* 自定义主题槽读取+规范化(启动初始化与导入备份共用同一份逻辑) */
+function loadCustomSlots() {
+  const DEF = { bg: "#fbfaf7", fg: "#292725" };
+  const HEX = v => /^#[0-9a-f]{6}$/i.test(v);
+  /* 高级覆盖项白名单(其余外壳色全部由纸面色派生) */
+  const ADV_KEYS = ["ui","fg","muted","border","button","accent"];
+  let arr = null;
+  try { arr = JSON.parse(localStorage.getItem("customThemes") || "null"); } catch {}
+  /* 槽位名不持久化(按语言派生); 界面配色全部由纸面色联动派生, adv为二次接管 */
+  const norm = s => {
+    const slot = (s && HEX(s.bg) && HEX(s.fg)) ? { bg: s.bg, fg: s.fg } : { ...DEF };
+    slot.adv = {};
+    for (const k of ADV_KEYS) if (HEX(s?.adv?.[k])) slot.adv[k] = s.adv[k];
+    slot.base = { bg: slot.bg, fg: slot.fg, adv: {} };
+    return slot;
+  };
+  return [0, 1, 2].map(i => norm(Array.isArray(arr) ? arr[i] : null));
+}
 const state = {
   zip: null, opfPath: "", chapterPath: "", book: null, urls: new Map(), chapterIndex: 0,
   fontSize: (() => { const v = Number(localStorage.getItem("fontSize")); return v >= 10 && v <= 36 ? v : 18; })(),
@@ -196,23 +214,7 @@ const state = {
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
   showPinyin: localStorage.getItem("showPinyin") === "1",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
-  customSlots: (() => {
-    const DEF = { bg: "#fbfaf7", fg: "#292725" };
-    const HEX = v => /^#[0-9a-f]{6}$/i.test(v);
-    /* 高级覆盖项白名单(其余外壳色全部由纸面色派生) */
-    const ADV_KEYS = ["ui","fg","muted","border","button","accent"];
-    let arr = null;
-    try { arr = JSON.parse(localStorage.getItem("customThemes") || "null"); } catch {}
-    /* 槽位名不持久化(按语言派生); 界面配色全部由纸面色联动派生, adv为二次接管 */
-    const norm = s => {
-      const slot = (s && HEX(s.bg) && HEX(s.fg)) ? { bg: s.bg, fg: s.fg } : { ...DEF };
-      slot.adv = {};
-      for (const k of ADV_KEYS) if (HEX(s?.adv?.[k])) slot.adv[k] = s.adv[k];
-      slot.base = { bg: slot.bg, fg: slot.fg, adv: {} };
-      return slot;
-    };
-    return [0, 1, 2].map(i => norm(Array.isArray(arr) ? arr[i] : null));
-  })(),
+  customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
   tocEntries: [],
   navUnits: [],
@@ -318,6 +320,15 @@ async function idbAll(storeName) {
     tx.onerror = () => rej(tx.error);
   });
 }
+async function idbKeys(storeName) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(storeName, "readonly");
+    const rq = tx.objectStore(storeName).getAllKeys();
+    tx.oncomplete = () => res(rq.result || []);
+    tx.onerror = () => rej(tx.error);
+  });
+}
 async function idbDel(storeName, id) {
   const db = await idbOpen();
   return new Promise((res, rej) => {
@@ -381,47 +392,333 @@ async function registerBook(file, title, chapters) {
     await pruneShelf();   /* 超出上限按最旧清理, 防止IndexedDB无限累积占满配额 */
   } catch {}
 }
-async function openFromShelf(id) {
+
+/* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
+   导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","autoSpeed","contentMax","contentLimited","sidePinned"];
+async function exportBackup() {
+  flushProgress();
+  const prefs = {};
+  for (const k of BACKUP_PREF_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v != null) prefs[k] = v;
+  }
+  let metas = [];
+  try {
+    metas = (await idbAll("meta")).filter(m => m && m.title).map(m => ({
+      name: m.name || m.title, title: m.title, size: m.size,
+      lastOpened: m.lastOpened || 0, chapters: m.chapters || 0,
+      i: m.i ?? 0, u: Number.isInteger(m.u) && m.u >= 0 ? m.u : null, r: Math.min(.999, Math.max(0, Number(m.r) || 0))
+    }));
+  } catch {}
+  const payload = { app: "epubreader-web", v: 1, exportedAt: new Date().toISOString(), prefs, books: metas };
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const a = document.createElement("a");
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  a.href = URL.createObjectURL(blob);
+  a.download = `epubreader-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  toast(t("backupExported"));
+}
+async function importBackup(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { alert(t("backupBad")); return; }
+  if (!data || data.app !== "epubreader-web" || typeof data.prefs !== "object" || !Array.isArray(data.books)) {
+    alert(t("backupBad"));
+    return;
+  }
+  let prefCount = 0;
+  for (const k of BACKUP_PREF_KEYS) {
+    const v = data.prefs[k];
+    if (typeof v === "string") {
+      try { localStorage.setItem(k, v); prefCount++; } catch {}
+    }
+  }
+  let bookCount = 0;
+  for (const b of data.books.slice(0, SHELF_LIMIT)) {
+    if (!b || typeof b.title !== "string" || !b.title || !Number.isFinite(b.size)) continue;
+    const i = Math.max(0, Number(b.i) || 0);
+    const u = Number.isInteger(b.u) && b.u >= 0 ? b.u : null;
+    const r = Math.min(.999, Math.max(0, Number(b.r) || 0));
+    const id = bookId(b.title, b.size);
+    const exist = await idbGet("meta", id).catch(() => null);
+    if (exist) continue;   /* 本机已有同名书记录, 以本机为准不覆盖 */
+    await idbPut("meta", {
+      id, name: typeof b.name === "string" && b.name ? b.name : b.title, title: b.title, size: b.size,
+      lastOpened: Number(b.lastOpened) || 0, chapters: Math.max(0, Number(b.chapters) || 0), i, u, r
+    });
+    try { localStorage.setItem(progressKey(b.title, b.size), JSON.stringify({ i, u, r })); } catch {}
+    bookCount++;
+  }
+  restorePrefsFromStorage();
+  syncAllPrefsUI();
+  toast(t("backupDone", prefCount, bookCount));
+}
+/* 从 localStorage 重读全部偏好到运行时 state(state 初始化逻辑的复用版, 导入备份后调用) */
+function restorePrefsFromStorage() {
+  const numOk = (k, min, max) => { const v = Number(localStorage.getItem(k)); return Number.isFinite(v) && v >= min && v <= max ? v : null; };
+  state.fontSize = numOk("fontSize", 10, 36) ?? 18;
+  state.lineHeight = Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75));
+  state.fontFamily = localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif";
+  state.bookFontFirst = localStorage.getItem("bookFontFirst") !== "0";
+  state.showPinyin = localStorage.getItem("showPinyin") === "1";
+  state.theme = ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light";
+  state.customSlots = loadCustomSlots();
+  state.customSlotIdx = Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0));
+  state.speed = Math.min(10, Math.max(1, Number(localStorage.getItem("autoSpeed")) || 4));
+  state.contentMax = (() => {
+    const v = Number(localStorage.getItem("contentMax"));
+    if (Number.isFinite(v) && v >= 480) return Math.min(1920, Math.round(v));
+    return (Number(localStorage.getItem("sideWidth")) || 0) > 0 ? 1100 : 700;
+  })();
+  state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
+  state.sidePinned = localStorage.getItem("sidePinned") === "1";
+  state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
+}
+function syncAllPrefsUI() {
+  $("fontFamilySel").value = state.fontFamily;
+  $("bookFontToggle").checked = state.bookFontFirst;
+  $("pinyinToggle").checked = state.showPinyin;
+  $("contentMaxToggle").checked = state.contentLimited;
+  $("speedRange").value = String(state.speed);
+  $("modeBtn").textContent = state.readMode === "paged" ? "↔" : "↕";
+  $("modeBtn").setAttribute("aria-pressed", String(state.readMode === "paged"));
+  syncContentInputs();
+  syncFontSize();
+  syncLineHeight();
+  syncContentMax();
+  syncCustomPickers();
+  applySide();
+  applyTheme();
+  applyI18n();
+}
+async function openFromShelf(id, anchor) {
   try {
     const rec = await idbGet("files", id);
     if (!rec?.file) {
-      alert(t("lostFile"));
-      await purgeBook(id);
-      renderShelf();
+      /* 文件未随备份保存: 就地弹出文件选择器, 选对同名同大小文件即回填并打开 */
+      await relinkGhostBook(id, anchor);
       return;
     }
     await openBookFile(rec.file);
   } catch (err) { alert(err.message); }
 }
-async function removeShelfItem(id) {
-  await purgeBook(id);
+/* 幽灵书目重链接: File Handling API 选择器优先, 无该 API 环境退回 input[type=file] */
+async function relinkGhostBook(id, anchor) {
+  const meta = await idbGet("meta", id).catch(() => null);
+  if (!meta) return;
+  toast(t("lostFileRelink"), { anchor });
+  const tryFile = async file => {
+    if (!file || file.size !== meta.size || !/\.(epub|txt)$/i.test(file.name)) {
+      toast(t("relinkMismatch"), { anchor });
+      return;
+    }
+    await idbPut("files", { id, file });
+    await openFromShelf(id, anchor);
+  };
+  if (typeof window.showOpenFilePicker === "function") {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "EPUB / TXT", accept: { "application/epub+zip": [".epub"], "text/plain": [".txt"] } }],
+        multiple: false
+      });
+      await tryFile(await handle.getFile());
+    } catch (e) {
+      if (e?.name === "AbortError") return;   /* 用户取消选择 */
+      alert(e.message);
+    }
+    return;
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".epub,application/epub+zip,.txt,text/plain";
+  input.onchange = async () => { await tryFile(input.files[0]); };
+  input.click();
+}
+/* 批量重链接: 多选文件按字节大小精确匹配幽灵书目(扩展名须合法), 同尺寸撞车的条目跳过计为未匹配 */
+async function batchRelink() {
+  let metas = [];
+  try {
+    const keys = new Set(await idbKeys("files"));
+    metas = (await idbAll("meta")).filter(m => m?.title && !keys.has(m.id));
+  } catch { return; }
+  if (!metas.length) return;
+  const pickFiles = async () => {
+    if (typeof window.showOpenFilePicker === "function") {
+      try {
+        const handles = await window.showOpenFilePicker({
+          types: [{ description: "EPUB / TXT", accept: { "application/epub+zip": [".epub"], "text/plain": [".txt"] } }],
+          multiple: true
+        });
+        return Promise.all(handles.map(h => h.getFile()));
+      } catch (e) {
+        if (e?.name === "AbortError") return null;
+        alert(e.message);
+        return null;
+      }
+    }
+    return new Promise(res => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.multiple = true;
+      input.accept = ".epub,application/epub+zip,.txt,text/plain";
+      input.onchange = () => res([...input.files]);
+      input.oncancel = () => res(null);
+      input.click();
+    });
+  };
+  const files = await pickFiles();
+  if (!files || !files.length) return;
+  /* size -> [meta...]: 字节大小是主匹配键, 命中多条视为歧义跳过 */
+  const bySize = new Map();
+  for (const m of metas) {
+    if (!bySize.has(m.size)) bySize.set(m.size, []);
+    bySize.get(m.size).push(m);
+  }
+  let restored = 0, unmatched = 0;
+  for (const f of files) {
+    if (!/\.(epub|txt)$/i.test(f.name)) { unmatched++; continue; }
+    const hits = bySize.get(f.size);
+    if (!hits || hits.length !== 1) { unmatched++; continue; }
+    await idbPut("files", { id: hits[0].id, file: f });
+    restored++;
+  }
+  toast(t("relinkResult", restored, unmatched), { anchor: $("relinkBtn") });
   renderShelf();
 }
+/* 撤销式移除: 点×先从列表隐藏并挂起5秒, 期间可撤销, 超时才真正清除数据 */
+const pendingRemove = new Map();
+function requestRemoveShelf(id, anchor) {
+  if (pendingRemove.has(id)) return;
+  pendingRemove.set(id, setTimeout(() => {
+    pendingRemove.delete(id);
+    purgeBook(id);
+  }, 5000));
+  renderShelf();
+  toast(t("shelfRemoved"), { action: { label: t("undo"), fn: () => {
+    const tmr = pendingRemove.get(id);
+    if (tmr) { clearTimeout(tmr); pendingRemove.delete(id); }
+    renderShelf();
+  } }, anchor });
+}
+/* ---------- 书架编辑模式: 多选/全选/批量移除(同样走5秒撤销期) ---------- */
+let shelfEditMode = false;
+const shelfSel = new Set();
+let shelfRenderedIds = [];
+
+function setShelfEditMode(on) {
+  if (shelfEditMode === on) return;
+  shelfEditMode = on;
+  shelfSel.clear();
+  $("shelfIdleBtns").hidden = on;
+  $("shelfEditBtns").hidden = !on;
+  closeShelfMenu();
+  renderShelf();
+}
+function toggleSelAll() {
+  const allSel = shelfRenderedIds.length > 0 && shelfRenderedIds.every(id => shelfSel.has(id));
+  if (allSel) shelfRenderedIds.forEach(id => shelfSel.delete(id));
+  else shelfRenderedIds.forEach(id => shelfSel.add(id));
+  renderShelf();
+}
+/* 批量移除选中书籍: 与单条×一致, 挂起5秒可整体撤销, 超时逐本真正清除 */
+function batchRemoveSel() {
+  const ids = [...shelfSel];
+  if (!ids.length) return;
+  for (const id of ids) {
+    if (pendingRemove.has(id)) continue;
+    pendingRemove.set(id, setTimeout(() => {
+      pendingRemove.delete(id);
+      purgeBook(id);
+    }, 5000));
+  }
+  shelfSel.clear();
+  renderShelf();
+  toast(t("batchRemoved", ids.length), { anchor: $("delSelBtn"), action: { label: t("undo"), fn: () => {
+    for (const id of ids) {
+      const tmr = pendingRemove.get(id);
+      if (tmr) { clearTimeout(tmr); pendingRemove.delete(id); }
+    }
+    renderShelf();
+  } } });
+}
+
 async function renderShelf() {
   const wrap = $("shelf"), list = $("shelfList");
-  let metas = [];
+  let metas = [], fileKeys = [];
   try { metas = await idbAll("meta"); } catch {}
-  metas = metas.filter(m => m && m.title).sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0)).slice(0, 15);
-  wrap.hidden = metas.length === 0;
+  try { fileKeys = await idbKeys("files"); } catch {}
+  const linked = new Set(fileKeys);
+  const allMetas = metas.filter(m => m && m.title && !pendingRemove.has(m.id));
+  /* 幽灵条目: 有书目元数据但文件本体缺失(备份导入), 视觉降级+徽章提示 */
+  const ghostCount = allMetas.filter(m => !linked.has(m.id)).length;
+  $("relinkBtn").hidden = ghostCount === 0 || shelfEditMode;
+  if (ghostCount && !shelfEditMode) $("relinkBtn").textContent = `${t("relinkBtn")} (${ghostCount})`;
+  metas = allMetas.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0)).slice(0, 15);
+  /* 编辑模式下即使列表暂空(全部处于撤销挂起期)也保持面板可见, 否则完成/全选按钮消失且撤销后无法继续编辑 */
+  wrap.hidden = metas.length === 0 && !shelfEditMode;
   list.textContent = "";
+  shelfRenderedIds = metas.map(m => m.id);
   for (const m of metas) {
-    const b = document.createElement("button");
+    const b = document.createElement("div");
     b.className = "shelfItem";
+    const isGhost = !linked.has(m.id);
+    if (isGhost) b.classList.add("ghost");
+    b.setAttribute("role", "button");
+    b.tabIndex = 0;
+    let check = null;
+    if (shelfEditMode) {
+      check = document.createElement("span");
+      check.className = "shelfCheck" + (shelfSel.has(m.id) ? " on" : "");
+      check.setAttribute("aria-hidden", "true");
+      b.classList.toggle("sel", shelfSel.has(m.id));
+      b.setAttribute("aria-pressed", String(shelfSel.has(m.id)));
+    }
     const titleEl = document.createElement("span");
     titleEl.className = "shelfTitle";
     titleEl.textContent = m.title;
     const info = document.createElement("span");
     info.className = "shelfInfo";
     const pos = m.chapters ? t("shelfPos", ((m.u ?? m.i) || 0) + 1, m.chapters) : "";
-    info.textContent = pos + new Date(m.lastOpened || Date.now()).toLocaleDateString(currentLang() === "en" ? "en-US" : "zh-CN");
+    const dateStr = new Date(m.lastOpened || Date.now()).toLocaleDateString(currentLang() === "en" ? "en-US" : "zh-CN");
+    info.textContent = pos + dateStr;
     const del = document.createElement("button");
     del.className = "shelfDel";
     del.title = t("shelfDelTip");
+    del.setAttribute("aria-label", `${t("shelfDelTip")}: ${m.title}`);
     del.textContent = "×";
-    del.onclick = e => { e.stopPropagation(); removeShelfItem(m.id); };
-    b.onclick = () => openFromShelf(m.id);
+    let badge = null;
+    if (isGhost) {
+      badge = document.createElement("span");
+      badge.className = "shelfBadge";
+      badge.textContent = t("shelfGhost");
+      b.title = t("ghostTip");
+    }
+    const open = () => openFromShelf(m.id, b);
+    const toggle = () => { shelfSel.has(m.id) ? shelfSel.delete(m.id) : shelfSel.add(m.id); renderShelf(); };
+    del.onclick = e => { e.stopPropagation(); requestRemoveShelf(m.id, del); };
+    b.onclick = shelfEditMode ? toggle : open;
+    b.onkeydown = e => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      shelfEditMode ? toggle() : open();
+    };
+    b.setAttribute("aria-label", `${m.title}，${pos}${dateStr}${isGhost ? "，" + t("shelfGhost") : ""}${shelfEditMode && shelfSel.has(m.id) ? "，" + t("selOn") : ""}`);
+    if (check) b.appendChild(check);
     b.append(titleEl, info, del);
+    if (badge) b.appendChild(badge);
     list.appendChild(b);
+  }
+  /* 编辑态操作栏状态刷新(全选文案/删除计数), 语言切换后经 applyI18n→renderShelf 同样生效 */
+  if (shelfEditMode) {
+    const allSel = shelfRenderedIds.length > 0 && shelfRenderedIds.every(id => shelfSel.has(id));
+    $("selAllBtn").textContent = allSel ? t("deselectAll") : t("selectAll");
+    const n = shelfSel.size;
+    $("delSelBtn").textContent = n ? `${t("delSelected")} (${n})` : t("delSelected");
+    $("delSelBtn").disabled = n === 0;
   }
 }
 
@@ -446,8 +743,7 @@ function closeBook() {
   $("bookTitle").textContent = "EPUB Reader";
   $("chapterLabel").textContent = t("noBook");
   $("progress").textContent = "—";
-  $("menuCloseBook").hidden = true;
-  $("fileMenu").hidden = true;
+  $("closeBookBtn").hidden = true;
   cancelSearchScan();
   clearSearchResults();
   switchSideTab("toc");
@@ -683,7 +979,7 @@ async function finishOpenBook(file, title) {
     else if (saved.i > 0 && saved.i < state.book.spine.length) start = firstUnitOfFile(saved.i);
     if (saved.r) { ropts.initialRatio = saved.r; ropts.noAnchor = true; }
   }
-  $("menuCloseBook").hidden = false;
+  $("closeBookBtn").hidden = false;
   await showUnit(start, ropts);
   registerBook(file, title, state.navUnits.length);
 }
@@ -1003,6 +1299,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     a{color:inherit;} p{text-align:justify;} h1,h2,h3,h4,h5,h6{break-after:avoid;}
     img,figure,table,pre,blockquote{break-inside:avoid;}
     html{scroll-behavior:smooth;overscroll-behavior:contain;}
+    @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;} .pgflow{transition:none !important;}}
     ${extraCss}
     ${pagedStyle}
     ${pinyinCss}
@@ -1297,6 +1594,7 @@ function setReadMode(mode) {
   state.readMode = mode;
   localStorage.setItem("readMode", mode);
   $("modeBtn").textContent = mode === "paged" ? "↔" : "↕";
+  $("modeBtn").setAttribute("aria-pressed", String(mode === "paged"));
   $("pageInfo").hidden = true;
   pagedCtx = null;
   scrollMarks = [];
@@ -1488,7 +1786,7 @@ function onFrameClick(e) {
     const target = resolveAnchor(doc, id);
     if (!target) return;
     if (pagedActive()) gotoPage(anchorToPage(target));   /* 多列布局纵向滚动无效, 按列翻页 */
-    else target.scrollIntoView({behavior:"smooth", block:"start"});
+    else target.scrollIntoView({behavior: REDUCED_MOTION ? "instant" : "smooth", block:"start"});
     return;
   }
   e.preventDefault();
@@ -1506,19 +1804,66 @@ function onFrameClick(e) {
 }
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, opts = {}) {
   let el = $("toast");
-  if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); }
-  el.textContent = msg;
-  el.classList.add("show");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+  const prevAct = el.querySelector(".toastAct");
+  if (prevAct) prevAct.remove();
+  let msgSpan = el.querySelector(".toastMsg");
+  if (!msgSpan) {
+    msgSpan = document.createElement("span");
+    msgSpan.className = "toastMsg";
+    el.textContent = "";
+    el.appendChild(msgSpan);
+  }
+  msgSpan.textContent = msg;
+  el.classList.toggle("hasAction", !!opts.action);
+  if (opts.action) {
+    const b = document.createElement("button");
+    b.className = "toastAct";
+    b.textContent = opts.action.label;
+    b.onclick = () => {
+      clearTimeout(toastTimer);
+      el.classList.remove("show");
+      opts.action.fn();
+    };
+    el.appendChild(b);
+  }
+  /* 锚定模式: 出现在触发元素附近(优先上方, 放不下换下方, 视口内钳位), 无锚点回落屏幕底部居中 */
+  const anchor = opts.anchor;
+  if (anchor && anchor.isConnected) {
+    el.classList.add("anchored");
+    el.style.left = "0px";
+    el.style.top = "0px";
+    const r = anchor.getBoundingClientRect();
+    const tr = el.getBoundingClientRect();
+    let x = r.left + r.width / 2 - tr.width / 2;
+    let y = r.top - tr.height - 8;
+    if (y < 8) y = r.bottom + 8;
+    x = Math.max(8, Math.min(window.innerWidth - tr.width - 8, x));
+    y = Math.max(8, Math.min(window.innerHeight - tr.height - 8, y));
+    el.style.left = `${Math.round(x)}px`;
+    el.style.top = `${Math.round(y)}px`;
+  } else {
+    el.classList.remove("anchored");
+    el.style.left = "";
+    el.style.top = "";
+  }
+  el.classList.add("show");
+  toastTimer = setTimeout(() => el.classList.remove("show"), opts.action ? 5200 : 2400);
 }
 
 function closeOverlays() {
   if (!state.sidePinned) $("sidebar").classList.remove("open");
   $("settingsPanel").hidden = true;
-  $("fileMenu").hidden = true;
+  syncOverlayAria();
 }
 
 function getPageHeight() {
@@ -1651,7 +1996,7 @@ function updateToc() {
 function scrollByPage(direction) {
   const win = $("bookFrame").contentWindow;
   if (!win) return;
-  win.scrollBy({top: direction * getPageHeight(), behavior:"smooth"});
+  win.scrollBy({top: direction * getPageHeight(), behavior: REDUCED_MOTION ? "instant" : "smooth"});
 }
 
 function nextPage() { scrollByPage(1); }
@@ -1728,6 +2073,7 @@ function setAuto(on) {
   state.auto = on;
   $("autoBtn").textContent = on ? "⏸" : "▶";
   $("autoBtn").classList.toggle("active", on);
+  $("autoBtn").setAttribute("aria-pressed", String(on));
   $("speedCtl").hidden = !on;
   cancelAnimationFrame(autoRafId);
   if (on) { autoLast = 0; lastAutoFlip = performance.now(); autoRafId = requestAnimationFrame(autoTick); }
@@ -1736,7 +2082,7 @@ function setAuto(on) {
 function handleKey(e) {
   const el = e.target;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) {
-    if (e.key === "Escape") { el.blur?.(); $("settingsPanel").hidden = true; }
+    if (e.key === "Escape") { el.blur?.(); $("settingsPanel").hidden = true; closeShelfMenu(); syncOverlayAria(); }
     return;
   }
   const paged = state.readMode === "paged";
@@ -1744,7 +2090,7 @@ function handleKey(e) {
   else if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); paged ? flipPage(-1) : prevPage(); }
   else if (e.key === "ArrowRight") { e.preventDefault(); paged ? flipPage(1) : nextChapter(); }
   else if (e.key === "ArrowLeft") { e.preventDefault(); paged ? flipPage(-1) : prevChapter(); }
-  else if (e.key === "Escape") { $("sidebar").classList.remove("open"); $("settingsPanel").hidden = true; $("fileMenu").hidden = true; }
+  else if (e.key === "Escape") { closeOverlays(); closeShelfMenu(); setShelfEditMode(false); }
 }
 
 function applyTheme() {
@@ -1759,15 +2105,27 @@ function applyTheme() {
   document.body.classList.toggle("green", state.theme === "green");
   applyCustomTheme();
   syncThemeChips();
+  syncThemeColor();
   localStorage.setItem("theme", state.theme);
 }
+/* 浏览器/系统 UI 随主题变色: 取当前 --bg 计算值写入 theme-color meta */
+function syncThemeColor() {
+  const bg = getComputedStyle(document.body).getPropertyValue("--bg").trim();
+  if (bg) document.querySelector('meta[name="theme-color"]').content = bg;
+}
+
+/* 用户偏好减少动效: 平滑滚动降级为瞬时跳转(过渡动画由 CSS media query 关闭) */
+const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- i18n ---------- */
 function syncLangChips() {
   const saved = localStorage.getItem("lang");
   const active = saved === "zh" || saved === "en" ? saved : "";
-  for (const b of document.querySelectorAll(".langChip"))
-    b.classList.toggle("active", b.dataset.lang === active);
+  for (const b of document.querySelectorAll(".langChip")) {
+    const on = b.dataset.lang === active;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
 }
 function applyI18n() {
   invalidateLangCache();
@@ -1847,10 +2205,16 @@ function applyCustomTheme() {
   rs.setProperty("--reader-bg", ct.bg);
 }
 function syncThemeChips() {
-  for (const b of document.querySelectorAll(".themeChip[data-theme]"))
-    b.classList.toggle("active", b.dataset.theme === state.theme);
-  for (const b of document.querySelectorAll(".slotChip"))
-    b.classList.toggle("active", state.theme === "custom" && Number(b.dataset.slot) === state.customSlotIdx);
+  for (const b of document.querySelectorAll(".themeChip[data-theme]")) {
+    const on = b.dataset.theme === state.theme;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
+  for (const b of document.querySelectorAll(".slotChip")) {
+    const on = state.theme === "custom" && Number(b.dataset.slot) === state.customSlotIdx;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
 }
 function saveCustomThemes() {
   try { localStorage.setItem("customThemes", JSON.stringify(state.customSlots)); } catch {}
@@ -1956,21 +2320,7 @@ function applySide() {
   syncPagedWidth();
 }
 
-$("menuBtn").onclick = e => {
-  e.stopPropagation();
-  const m = $("fileMenu"), b = $("menuBtn");
-  if (m.hidden) {
-    const r = b.getBoundingClientRect();
-    m.style.left = "auto";
-    m.style.top = `${Math.round(r.bottom + 6)}px`;
-    m.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
-    m.hidden = false;
-  } else {
-    m.hidden = true;
-  }
-};
-$("menuOpen").onclick = () => { $("fileMenu").hidden = true; $("fileInput").click(); };
-$("menuCloseBook").onclick = () => { $("fileMenu").hidden = true; closeBook(); };
+$("closeBookBtn").onclick = () => closeBook();
 $("tocBtn").onclick = () => {
   const sb = $("sidebar");
   if (sb.classList.contains("open")) { sb.classList.remove("open"); return; }
@@ -1985,11 +2335,19 @@ $("searchBtn").onclick = () => {
   sb.classList.add("open");
   $("searchInput").focus();
 };
+/* 弹层开合状态同步到触发按钮的 aria-expanded(供屏幕阅读器播报) */
+function syncOverlayAria() {
+  const sbOpen = $("sidebar").classList.contains("open");
+  $("tocBtn").setAttribute("aria-expanded", String(sbOpen && !$("toc").hidden));
+  $("searchBtn").setAttribute("aria-expanded", String(sbOpen && !$("searchPage").hidden));
+  $("settingsBtn").setAttribute("aria-expanded", String(!$("settingsPanel").hidden));
+}
 function switchSideTab(tab) {
   $("tabToc").classList.toggle("active", tab === "toc");
   $("tabSearch").classList.toggle("active", tab === "search");
   $("toc").hidden = tab !== "toc";
   $("searchPage").hidden = tab !== "search";
+  syncOverlayAria();
 }
 $("tabToc").onclick = () => switchSideTab("toc");
 $("tabSearch").onclick = () => { switchSideTab("search"); $("searchInput").focus(); };
@@ -1998,6 +2356,7 @@ const pinBtn = $("pinSidebar");
 function applySidePin() {
   $("sidebar").classList.toggle("pinned", state.sidePinned);
   pinBtn.classList.toggle("active", state.sidePinned);
+  pinBtn.setAttribute("aria-pressed", String(state.sidePinned));
   pinBtn.title = state.sidePinned ? t("pinActiveTip") : t("pinTip");
 }
 pinBtn.onclick = e => {
@@ -2012,9 +2371,23 @@ function scrollTocToCurrent() {
   if (el) el.scrollIntoView({ block: "center" });
 }
 $("fileInput").onchange = async e => { const f=e.target.files[0]; e.target.value=""; if(f) try{await openBookFile(f)}catch(err){alert(err.message)} };
+$("exportData").onclick = () => exportBackup().catch(err => alert(err.message));
+$("importData").onclick = () => $("backupInput").click();
+$("backupInput").onchange = async e => { const f=e.target.files[0]; e.target.value=""; if(f) try{await importBackup(f)}catch(err){alert(err.message)} };
+$("relinkBtn").onclick = () => batchRelink();
+/* PWA File Handling: 安装后从系统文件管理器/分享打开 .epub/.txt(Chromium桌面与Android) */
+if ("launchQueue" in window) {
+  launchQueue.setConsumer(async params => {
+    const handle = params.files?.[0];
+    if (!handle) return;
+    try { await openBookFile(await handle.getFile()); }
+    catch (err) { alert(err.message); }
+  });
+}
 $("sbPrev").onclick = prevChapter;
 $("sbNext").onclick = nextChapter;
 $("modeBtn").textContent = state.readMode === "paged" ? "↔" : "↕";
+$("modeBtn").setAttribute("aria-pressed", String(state.readMode === "paged"));
 $("modeBtn").onclick = () => setReadMode(state.readMode === "paged" ? "scroll" : "paged");
 $("searchInput").oninput = e => {
   clearTimeout(searchTimer);
@@ -2092,7 +2465,11 @@ $("advToggle").onclick = () => {
 $("autoBtn").onclick = () => { if (state.book) setAuto(!state.auto); };
 $("speedRange").value = String(state.speed);
 $("speedRange").oninput = e => { state.speed = Number(e.target.value); localStorage.setItem("autoSpeed", e.target.value); };
-$("settingsBtn").onclick = e => { e.stopPropagation(); $("settingsPanel").hidden = !$("settingsPanel").hidden; };
+$("settingsBtn").onclick = e => {
+  e.stopPropagation();
+  $("settingsPanel").hidden = !$("settingsPanel").hidden;
+  syncOverlayAria();
+};
 $("sideReset").onclick = () => {
   state.contentLimited = true; state.contentMax = 700; state.lineHeight = 1.75; state.fontFamily = "serif"; state.fontSize = 18; state.bookFontFirst = true;
   $("fontFamilySel").value = "serif";
@@ -2177,19 +2554,43 @@ $("contentMaxToggle").onchange = e => {
   applySide();
 };
 document.addEventListener("click", e => {
-  for (const id of ["settingsPanel", "fileMenu"]) {
-    const p = $(id);
-    if (!p.hidden && !p.contains(e.target) && e.target !== $("menuBtn") && e.target !== $("settingsBtn")) p.hidden = true;
-  }
+  const p = $("settingsPanel");
+  if (!p.hidden && !p.contains(e.target) && e.target !== $("settingsBtn")) p.hidden = true;
+  const m = $("shelfMenu");
+  if (!m.hidden && !m.contains(e.target) && e.target !== $("menuShelfBtn")) closeShelfMenu();
+  syncOverlayAria();
 });
 $("main").addEventListener("click", closeOverlays);
 
-window.addEventListener("keydown", handleKey);
+/* ---------- 书架三点菜单与编辑模式绑定 ---------- */
+function syncShelfMenuAria() {
+  $("menuShelfBtn").setAttribute("aria-expanded", String(!$("shelfMenu").hidden));
+}
+function closeShelfMenu() {
+  if ($("shelfMenu").hidden) return;
+  $("shelfMenu").hidden = true;
+  syncShelfMenuAria();
+}
+$("menuShelfBtn").onclick = e => {
+  e.stopPropagation();
+  const m = $("shelfMenu");
+  if (m.hidden) {
+    const r = $("menuShelfBtn").getBoundingClientRect();
+    m.style.top = `${Math.round(r.bottom + 6)}px`;
+    m.style.left = "auto";
+    m.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+    m.hidden = false;
+  } else {
+    m.hidden = true;
+  }
+  syncShelfMenuAria();
+};
+$("editShelfBtn").onclick = () => setShelfEditMode(true);
+$("doneEditBtn").onclick = () => setShelfEditMode(false);
+$("selAllBtn").onclick = toggleSelAll;
+$("delSelBtn").onclick = batchRemoveSel;
 
-document.addEventListener("click", e => {
-  const b = e.target?.closest?.("button");
-  if (b) b.blur();
-});
+window.addEventListener("keydown", handleKey);
 
 function dragHover(e) { e.preventDefault(); $("dropOverlay").hidden = false; }
 function dragLeave(e) { if (!e.relatedTarget) $("dropOverlay").hidden = true; }

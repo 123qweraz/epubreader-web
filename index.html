@@ -13,8 +13,8 @@
 <body>
   <header class="toolbar">
     <input id="fileInput" type="file" accept=".epub,application/epub+zip,.txt,text/plain" hidden>
-    <button id="tocBtn" class="iconBtn" title="目录" data-i18n-title="toc">☰</button>
-    <button id="searchBtn" class="iconBtn" title="搜索" data-i18n-title="search"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.6" y1="15.6" x2="21" y2="21"/></svg></button>
+    <button id="tocBtn" class="iconBtn" title="目录" aria-expanded="false" data-i18n-title="toc">☰</button>
+    <button id="searchBtn" class="iconBtn" title="搜索" aria-expanded="false" data-i18n-title="search"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.6" y1="15.6" x2="21" y2="21"/></svg></button>
     <div class="title" id="bookTitle">EPUB Reader</div>
     <div class="toolbarRight">
       <div id="speedCtl" class="speedCtl" hidden>
@@ -22,17 +22,12 @@
         <input id="speedRange" type="range" min="1" max="10" step="1" aria-label="自动阅读速度" data-i18n-aria="autoReadSpeedAria">
         <span data-i18n="speedFast">快</span>
       </div>
-      <button id="autoBtn" title="自动阅读" data-i18n-title="autoRead">▶</button>
-      <button id="modeBtn" title="切换滚动/翻页模式" data-i18n-title="modeTip">↕</button>
-      <button id="settingsBtn" title="阅读设置" data-i18n-title="settings">⚙</button>
-      <button id="menuBtn" class="iconBtn" title="菜单" data-i18n-title="menu">⋯</button>
+      <button id="autoBtn" title="自动阅读" aria-pressed="false" data-i18n-title="autoRead">▶</button>
+      <button id="modeBtn" title="切换滚动/翻页模式" aria-pressed="false" data-i18n-title="modeTip">↕</button>
+      <button id="settingsBtn" title="阅读设置" aria-expanded="false" data-i18n-title="settings">⚙</button>
+      <button id="closeBookBtn" class="iconBtn" title="关闭书籍" aria-label="关闭书籍" hidden data-i18n-title="closeBook" data-i18n-aria="closeBook">✕</button>
     </div>
   </header>
-
-  <div id="fileMenu" class="fileMenu" hidden>
-    <button id="menuOpen"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5C10 3.8 7 3.5 4 4v14c3-.5 6-.2 8 1.5 2-1.7 5-2 8-1.5V4c-3-.5-6-.2-8 1.5z"/><line x1="12" y1="5.5" x2="12" y2="19.5"/></svg><span data-i18n="menuOpen">打开书籍…</span></button>
-    <button id="menuCloseBook" hidden data-i18n="menuCloseBook">✕　关闭书籍</button>
-  </div>
 
   <div id="settingsPanel" class="settingsPanel" hidden>
     <div class="settingSection">Language 语言</div>
@@ -163,7 +158,7 @@
       <div class="searchHead">
         <input id="searchInput" type="search" placeholder="全书搜索…" data-i18n-ph="searchPh">
       </div>
-      <div id="searchStatus" class="searchStatus"></div>
+      <div id="searchStatus" class="searchStatus" role="status"></div>
       <div id="searchResults"></div>
     </div>
   </aside>
@@ -174,8 +169,25 @@
       <p data-i18n="welcomeP">把 EPUB / TXT 文件拖到这里，或者点击“选择文件”。</p>
       <button id="openWelcome" data-i18n="welcomeBtn">选择文件</button>
       <div id="shelf" class="shelf" hidden>
-        <h2 data-i18n="shelfH">书架</h2>
+        <div class="shelfHead">
+          <h2 data-i18n="shelfH">书架</h2>
+          <div class="shelfHeadBtns" id="shelfIdleBtns">
+            <button id="menuShelfBtn" class="iconBtn" title="更多" aria-haspopup="true" aria-expanded="false" data-i18n-title="moreTip">⋯</button>
+            <button id="editShelfBtn" class="textBtn" data-i18n="shelfEdit">编辑</button>
+          </div>
+          <div class="shelfHeadBtns" id="shelfEditBtns" hidden>
+            <button id="selAllBtn" class="textBtn" data-i18n="selectAll">全选</button>
+            <button id="delSelBtn" class="textBtn danger" disabled data-i18n="delSelected">删除</button>
+            <button id="doneEditBtn" class="textBtn" data-i18n="done">完成</button>
+          </div>
+        </div>
+        <button id="relinkBtn" class="ghostBtn relinkBtn" hidden data-i18n="relinkBtn">恢复未关联书籍</button>
         <div id="shelfList"></div>
+        <input id="backupInput" type="file" accept=".json,application/json" hidden>
+        <div id="shelfMenu" class="shelfMenu" role="menu" hidden>
+          <button id="exportData" role="menuitem" data-i18n="exportData">导出阅读数据</button>
+          <button id="importData" role="menuitem" data-i18n="importData">导入阅读数据</button>
+        </div>
       </div>
     </section>
 
@@ -198,9 +210,15 @@
   <script>
     if ("serviceWorker" in navigator) {
       addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+      /* 版本握手: SW 换版后页面可能仍持有旧静态资源(缓存优先), 检测到版本变化自动刷新一次 */
       navigator.serviceWorker.addEventListener("message", e => {
-        if (e.data?.type === "shell-version")
-          console.info(`[阅读器] 资源版本 ${e.data.version}` + (e.data.version !== "v8" ? "（若非最新，请再刷新一次）" : ""));
+        if (e.data?.type !== "shell-version") return;
+        console.info(`[阅读器] 资源版本 ${e.data.version}`);
+        try {
+          const prev = localStorage.getItem("shellVer");
+          localStorage.setItem("shellVer", e.data.version);
+          if (prev && prev !== e.data.version) location.reload();
+        } catch {}
       });
       navigator.serviceWorker.controller?.postMessage("version");
     }

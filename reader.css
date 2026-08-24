@@ -10,6 +10,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 button { border: 0; background: var(--button); color: var(--fg); border-radius: 6px; padding: 7px 11px; cursor: pointer; }
@@ -30,10 +31,27 @@ body.immersive .toolbar, body.immersive .statusbar { display: none; }
 .welcome h1 { color: var(--fg); font-weight: 500; margin: 0; }
 .welcome p { margin: 0; }
 .shelf { width: min(640px, 92vw); text-align: left; }
-.shelf h2 { font-size: 15px; font-weight: 600; color: var(--fg); margin: 0 0 6px; }
-.shelfItem { display: flex; width: 100%; gap: 10px; align-items: baseline; background: transparent; padding: 9px 10px; }
-.shelfItem:hover { background: var(--button); filter: none; }
+.shelfHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.shelf h2 { font-size: 15px; font-weight: 600; color: var(--fg); margin: 0; }
+.shelfHeadBtns { display: flex; align-items: center; gap: 6px; }
+.textBtn { font-size: 13px; padding: 5px 12px; }
+.textBtn.danger:not(:disabled) { color: #b3402f; }
+body.dark .textBtn.danger:not(:disabled) { color: #e08a7a; }
+.textBtn.danger:disabled { opacity: .45; cursor: default; }
+.shelfMenu { position: fixed; z-index: 30; background: var(--bar); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: grid; padding: 5px; min-width: 180px; text-align: left; }
+.shelfMenu[hidden] { display: none; }
+.shelfMenu button { display: block; width: 100%; text-align: left; background: transparent; padding: 9px 12px; font-size: 14px; border-radius: 6px; }
+.shelfMenu button:hover { background: var(--button); filter: none; }
+.shelfItem { display: flex; width: 100%; gap: 10px; align-items: baseline; background: transparent; padding: 9px 10px; cursor: pointer; border-radius: 6px; position: relative; }
+.shelfItem:not(:last-child)::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 1px; background: var(--border); opacity: .6; pointer-events: none; }
+.shelfItem:hover, .shelfItem.sel { background: var(--button); }
+.shelfItem:hover::after, .shelfItem.sel::after { opacity: 0; }
+.shelfCheck { flex: 0 0 auto; width: 18px; height: 18px; align-self: center; border: 2px solid var(--muted); border-radius: 4px; position: relative; box-sizing: border-box; background: var(--bg); }
+.shelfItem.sel .shelfCheck { border-color: var(--accent); background: var(--accent); }
+.shelfItem.sel .shelfCheck::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 12px; line-height: 1; }
 .shelfTitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.shelfItem.ghost .shelfTitle { opacity: .55; font-style: italic; }
+.shelfBadge { position: absolute; top: -6px; right: 26px; flex: 0 0 auto; font-size: 10px; line-height: 1; padding: 3px 7px; border: 1px dashed var(--muted); border-radius: 999px; color: var(--muted); background: var(--bg); pointer-events: none; }
 .shelfInfo { flex: 0 0 auto; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .shelfDel { flex: 0 0 auto; background: transparent; color: var(--muted); padding: 2px 8px; font-size: 15px; border-radius: 4px; }
 .reader { position: absolute; inset: 0; display: flex; align-items: stretch; background: var(--bg); }
@@ -69,18 +87,19 @@ body.immersive .toolbar, body.immersive .statusbar { display: none; }
 .dropOverlay[hidden] { display: none; }
 #toast { position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%) translateY(8px); z-index: 200; background: rgba(0,0,0,.78); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity:0; pointer-events:none; transition: opacity .18s ease, transform .18s ease; }
 #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
-body.dark { --bg: #1c1b1a; --fg: #ddd8cf; --muted: #918b81; --bar: rgba(28,27,26,.95); --border: #393633; --button: #302e2b; --reader-bg: #211f1d; --accent: #c8b99f; }
+#toast.hasAction { display:flex; align-items:center; gap:10px; pointer-events:auto; }
+#toast.anchored { left:0; top:0; bottom:auto; transform:none; transition: opacity .15s ease; }
+#toast.anchored.show { transform:none; }
+.toastMsg { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.toastAct { flex:0 0 auto; background:transparent; color:#fff; border:1px solid rgba(255,255,255,.55); border-radius:6px; padding:3px 12px; font-size:12px; cursor:pointer; }
+.toastAct:hover { background:rgba(255,255,255,.15); filter:none; }
+body.dark { --bg: #1c1b1a; --fg: #ddd8cf; --muted: #918b81; --bar: rgba(28,27,26,.95); --border: #393633; --button: #302e2b; --reader-bg: #211f1d; --accent: #c8b99f; color-scheme: dark; }
 body.sepia { --bg: #eee4c9; --fg: #4a3b2a; --muted: #8a7a62; --bar: rgba(238,228,201,.94); --border: #dccfa8; --button: #e6dab9; --reader-bg: #f4ecd8; --accent: #8a6a3b; }
 body.white { --bg: #f0f0f0; --fg: #292725; --muted: #77736c; --bar: rgba(240,240,240,.94); --border: #cecece; --button: #dddddd; --reader-bg: #ffffff; --accent: #635b4f; }
 body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229,205,.94); --border: #b0c5b0; --button: #bdd3bd; --reader-bg: #d9edd9; --accent: #32af70; }
 
 .settingsPanel { position: fixed; top: 54px; right: 10px; z-index: 20; background: var(--bar); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: grid; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); min-width: 300px; }
 .settingsPanel[hidden] { display: none; }
-.fileMenu { position: fixed; z-index: 20; background: var(--bar); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: grid; padding: 5px; min-width: 170px; }
-.fileMenu[hidden] { display: none; }
-.fileMenu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: transparent; padding: 9px 12px; font-size: 14px; border-radius: 6px; }
-.fileMenu button svg { flex: 0 0 auto; }
-.fileMenu button:hover { background: var(--button); filter: none; }
 .settingRow { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg); }
 .settingSection { font-size: 12px; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
 .themeChips { display: flex; gap: 6px; flex: 1; align-items: center; }
@@ -126,6 +145,12 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .searchChapter { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
 .searchSnippet { display: block; font-size: 13px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .searchSnippet mark { background: #ffd54f; color: #111; border-radius: 2px; }
+.relinkBtn { border: 1px dashed var(--muted); border-radius: 999px; margin-bottom: 6px; align-self: flex-start; }
+.ghostBtn { background: transparent; color: var(--muted); font-size: 12px; padding: 4px 10px; }
+.ghostBtn:hover { background: var(--button); filter: none; color: var(--fg); }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .settingsPanel, #toast, .viewport { transition: none !important; }
+}
 @media (max-width: 700px) {
   .sidebar { width: min(380px, 92vw); }
   /* 移动端触控目标: 按钮≥44px, 设置面板撑满屏宽防溢出 */
