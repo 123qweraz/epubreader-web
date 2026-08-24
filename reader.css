@@ -67,6 +67,7 @@ body.dark .textBtn.danger:not(:disabled):hover { filter: none; background: rgba(
 #shelfList.grid .shelfItem.sel { background: var(--reader-bg); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), var(--shadow-1); }
 .cardCover { position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; border-radius: var(--r-sm); overflow: hidden; background: linear-gradient(160deg, hsl(var(--ch, 40), 42%, 88%), hsl(var(--ch, 40), 36%, 74%)); margin-bottom: 8px; }
 body.dark .cardCover { background: linear-gradient(160deg, hsl(var(--ch, 40), 30%, 34%), hsl(var(--ch, 40), 28%, 24%)); }
+.cardCoverImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .cardProg { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--accent); border-radius: 0 var(--r-full) var(--r-full) 0; }
 #shelfList.grid .shelfTitle { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; font-size: var(--fs-sm); min-height: 2.7em; overflow: hidden; }
 #shelfList.grid .shelfInfo { display: block; margin-top: 3px; }

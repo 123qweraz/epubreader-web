@@ -398,7 +398,8 @@ async function registerBook(file, title, chapters) {
     await idbPut("files", { id, file });
     await idbPut("meta", {
       id, name: file.name, title, size: file.size,
-      lastOpened: Date.now(), chapters, i: state.chapterIndex, u: state.unitIdx, r: currentRatio()
+      lastOpened: Date.now(), chapters, i: state.chapterIndex, u: state.unitIdx, r: currentRatio(),
+      cover: state.book?.coverBlob instanceof Blob ? state.book.coverBlob : null
     });
     await pruneShelf();   /* 超出上限按最旧清理, 防止IndexedDB无限累积占满配额 */
   } catch {}
@@ -621,6 +622,7 @@ function requestRemoveShelf(id, anchor) {
 let shelfEditMode = false;
 const shelfSel = new Set();
 let shelfRenderedIds = [];
+let shelfCoverUrls = [];   /* 网格封面 objectURL, 每次渲染统一回收 */
 
 function setShelfEditMode(on) {
   if (shelfEditMode === on) return;
@@ -692,6 +694,8 @@ async function renderShelf() {
   const gridView = state.shelfView === "grid";
   list.classList.toggle("grid", gridView);
   list.textContent = "";
+  for (const u of shelfCoverUrls) URL.revokeObjectURL(u);
+  shelfCoverUrls = [];
   shelfRenderedIds = metas.map(m => m.id);
   for (const m of metas) {
     const isGhost = !linked.has(m.id);
@@ -730,6 +734,16 @@ async function renderShelf() {
       cover.className = "cardCover";
       cover.style.setProperty("--ch", String(hue));
       cover.setAttribute("aria-hidden", "true");
+      if (m.cover instanceof Blob) {
+        const u = URL.createObjectURL(m.cover);
+        shelfCoverUrls.push(u);
+        const img = document.createElement("img");
+        img.className = "cardCoverImg";
+        img.alt = "";
+        img.loading = "lazy";
+        img.src = u;
+        cover.appendChild(img);
+      }
       const p = loadProgress(m.title, m.size);
       if (p && m.chapters) {
         const pct = Math.round(((p.i + (p.r || 0)) / m.chapters) * 100);
@@ -1070,6 +1084,21 @@ async function openEpub(file) {
   const tocId = first(opf, "spine")?.getAttribute("toc");
   const ncxItem = tocId ? manifest.get(tocId) : [...manifest.values()].find(x => x.media === "application/x-dtbncx+xml");
   if (ncxItem) book.ncxPath = resolvePath(opfPath, ncxItem.href);
+
+  /* 封面提取: EPUB3 properties=cover-image 优先, EPUB2 meta[name=cover] 指认次之, 文件名含 cover 的图片兜底 */
+  const coverItem = [...manifest.values()].find(x => /(^|\s)cover-image(\s|$)/i.test(x.props) && /^image\//.test(x.media || ""))
+    || (() => {
+      const mc = all(opf, "meta").find(m => (m.getAttribute("name") || "") === "cover");
+      const it = mc ? manifest.get(mc.getAttribute("content")) : null;
+      return it && /^image\//.test(it.media || "") ? it : null;
+    })()
+    || [...manifest.values()].find(x => /^image\//.test(x.media || "") && /cover/i.test(`${x.id || ""} ${x.href || ""}`));
+  if (coverItem?.href) {
+    try {
+      const coverData = await zip.read(resolvePath(opfPath, coverItem.href));
+      book.coverBlob = new Blob([coverData], { type: coverItem.media || "image/jpeg" });
+    } catch {}
+  }
 
   initStateForBook(book, metaTitle, { zip, opfPath, mediaByPath });
   state.tocEntries = await buildToc(opf, manifest, spine);

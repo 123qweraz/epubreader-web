@@ -103,14 +103,17 @@ window.prompt = () => null;
 window.__buildEpub = (title, padTo = 0) => {
   /* 填充必须放进 ZIP 条目内容内部: 尾部补零会把 EOCD 推出解析器 64K 扫描窗; 两遍构造精确到指定字节 */
   const enc = new TextEncoder();
+  /* 1x1 红色PNG, 作为EPUB封面走 properties=cover-image 提取链路 */
+  const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
   const mk = padChars => {
   const files = [
     ["mimetype", "application/epub+zip"],
     ["META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
-    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="uid">urn:uuid:' + title + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="uid">urn:uuid:' + title + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover-img" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="c1"/></spine></package>'],
     ["OEBPS/nav.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">第一章 测试章</a></li></ol></nav></body></html>'],
-    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1><p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>']
-  ].map(([n, s]) => [n, enc.encode(s)]);
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1><p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>'],
+    ["OEBPS/cover.png", png]
+  ].map(([n, s]) => [n, typeof s === "string" ? enc.encode(s) : s]);
   const chunks = [], centrals = [];
   let offset = 0;
   for (const [name, data] of files) {
@@ -215,6 +218,13 @@ window.__buildEpub = (title, padTo = 0) => {
   ok(await evalJs(`document.getElementById("welcome").hidden === false && document.getElementById("closeBookBtn").hidden === true`), "✕点击直接关闭书籍回书架");
   const shelfCount = await evalJs(`document.querySelectorAll("#shelfList .shelfItem").length`);
   ok(shelfCount === 1, "书架出现1条记录");
+  const coverChk = await evalJs(`
+(async () => ({
+  img: !!document.querySelector("#shelfList .cardCoverImg") && document.querySelector("#shelfList .cardCoverImg").src.startsWith("blob:"),
+  stored: (await idbAll("meta"))[0].cover instanceof Blob
+}))()
+`);
+  ok(coverChk.img && coverChk.stored, "EPUB封面经cover-image提取, 卡片显示且Blob已入meta库");
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */
