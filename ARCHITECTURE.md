@@ -1,0 +1,112 @@
+# ARCHITECTURE — 架构现状与演进路线
+
+> 本文档记录项目的技术哲学、依赖清单、代码现状地图，以及「按需拆分」的演进路线。
+> 改动架构前先读这里；完成一次拆分后回来更新对应条目。
+
+## 一、项目定位与技术哲学
+
+纯本地网页版阅读器（EPUB/TXT），PWA 可安装。核心决策与约束：
+
+- **零依赖**：除一个拼音字典库外全部手写（ZIP 解压、EPUB 解析、分页引擎、搜索、主题）
+- **本地可运行**：无 CDN 运行时引用、无构建步骤、无打包器；经典 `<script>` 标签链加载，
+  **保留 file:// 双击直开能力**（因此不迁移 ES Modules——其 CORS 限制会杀死直开）
+- **部署形态**：GitHub Pages 静态托管 + Service Worker 离线缓存；SW 要求 http(s) 环境，
+  故实际使用走 localhost / Pages，file:// 直开是降级可用路径
+
+## 二、依赖清单
+
+### 第三方（仅此一项）
+
+| 资产 | 许可 | 说明 |
+|---|---|---|
+| `vendor/pinyin-pro.min.js`（347KB） | MIT | 汉字转拼音的字典+分词。**不在首屏**：`pinyin.js` 的 `ensurePinyinLib()` 动态注入 `<script>`，首次开启注音才拉取，SW 预缓存后离线可用 |
+
+我们的 `pinyin.js` 只是调度引擎（DOM 遍历/批量调度/观察器），转换能力全部来自该库。
+
+### 自写模块
+
+ZIP 中央目录读取 + CRC32 + 手写 DEFLATE inflate（`reader.js` 内 `ZipReader`）、
+EPUB 解析（DOMParser 处理 OPF/nav/NCX）、分页引擎（CSS columns 方案）、全书搜索、
+主题派生色算法、TXT 编码探测与章节切分、i18n、Service Worker。
+
+### 平台 API
+
+IndexedDB（书籍文件）、localStorage（进度与偏好）、Service Worker + Cache API、
+Blob/File、MessageChannel（宏任务让出，后台标签不被钳制）、DOMParser/XMLSerializer。
+
+## 三、现状地图
+
+```
+index.html   212 行   UI 骨架 + 三条脚本链 + 内联 SW 版本握手
+reader.js   2429 行   全部核心逻辑（161 个函数）★ 单文件巨石，见下方职责域分布
+i18n.js      156 行   翻译表
+pinyin.js    166 行   注音调度引擎（独立于核心，三触点: pyDispatch/pyMarkMove/pyReset）
+sw.js         78 行   预缓存 SHELL 清单 + 缓存策略
+vendor/             pinyin-pro.min.js
+```
+
+### reader.js 职责域分布（行号约数，拆分前先重新核对）
+
+| 区域 | 行号 | 内容 |
+|---|---|---|
+| 基础工具 + ZIP | L1-90 | `$`、CRC32 表、路径工具（dirname/safeDecode/resolvePath/hrefFragment）、xmlDoc/parseHtmlDoc、yieldToUi |
+| 文档清洗 + 媒体常量 | L91-110 | BOOK_CSP、LAZY_PLACEHOLDER、sanitizeDoc |
+| TXT 解析 | L111-153 | decodeTextFile、parseTxtChapters |
+| 主题基础 | L154-208 | THEMES、readerColors、hexToRgb/lum/shade |
+| **state 全局单点** | L209 | 运行时可变状态，被所有域读写——拆分的真正耦合点 |
+| 存储/书架/进度/备份 | L241-555 | IndexedDB 封装、进度保存、备份导入导出、撤销式移除 |
+| 全书搜索 | L606-784 | 扫描、命中定位指纹自纠偏、跨节点高亮包裹 |
+| 渲染管线 | L785-1100 | 开书流程、chapter-doc 构建、整书模式媒体懒解压（blob 化） |
+| 翻页 + 滚动引擎 | L1101-1460 | CSS columns 测排、翻页/滚动双模式、触摸手势、沉浸模式、滚动虚拟化同步 |
+| 导航壳 | L1438-1930 | TOC 渲染、键盘、自动播放、toast、iframe 点击代理、runAfterLoad |
+| 设置/PWA/拖放 | L2095-末尾 | 设置面板绑定、主题高级覆盖、File Handling、拖放开书 |
+
+### 加载技术并存现状
+
+1. 静态脚本链：`index.html` 底部按序 `i18n.js → pinyin.js → reader.js`
+2. 动态注入懒加载：`pinyin.js` 的 `ensurePinyinLib()` 运行时注入 vendor 库
+3. 内联脚本：index.html 尾部的 SW 版本握手（activate 广播 + 页面 ping）
+
+## 四、架构演进原则
+
+**按需拆分，只拆大功能，触发即拆不预拆。**
+
+- 模块机制维持经典脚本链：拆出的文件就是链条里多一环 `<script src="xxx.js">`，
+  排在被依赖者之后、使用者之前
+- 不迁 ES Modules：file:// 直开兼容优先于 import 显式化
+- 每次拆分 = 一个独立 commit + 冒烟回归 + `sw.js` 版本递增
+- 体量不足的功能域永不单独成文件（util、TXT、搜索、i18n）
+
+## 五、候选拆分队列（触发条件 → 产出）
+
+| 触发点 | 抽出模块 | 体量 | 内容 |
+|---|---|---|---|
+| 做 encryption.xml 字体解密时 | `epub.js` | ~350 行 | ZipReader+CRC32+路径工具+xmlDoc/parseHtmlDoc+OPF/nav/NCX 解析（纯函数为主，低风险） |
+| 做 FXL 固定排版时 | `pager.js` | ~400 行 | 翻页+滚动引擎整体迁出；FXL 作为新渲染模式并入；RTL 翻页方向同批做 |
+| 做云备份/同步时 | `storage.js` | ~300 行 | IndexedDB/localStorage/备份导入导出 |
+| 主题系统大改时 | `theme.js` | ~250 行 | THEMES+派生色+设置绑定中的外观部分 |
+
+## 六、未来功能挂载点速查
+
+| 功能 | 落点 | 备注 |
+|---|---|---|
+| encryption.xml 字体解密（IDPF/Adobe 双混淆算法，XOR 前 1040/1024 字节） | epub 层 | 参考实现 foliate-js epub.js:568-640（MIT）；SHA-1 用 crypto.subtle（安全上下文可用） |
+| FXL 固定排版（绘本/漫画，rendition:layout=pre-paginated） | pager 层 | 整页缩放模式，视口来源回退链：SVG viewBox → viewport meta → 书级默认 → 图片自然尺寸 |
+| RTL 翻页（日漫 page-progression-direction="rtl"） | pager 层 | 现有 flipPage 符号取反即可 |
+| SVG 直接作 spine 条目 / EPUB2 封面三级回退（cover-image 属性 → meta name=cover → guide type） | epub/渲染管线 | prepareSpineBody 已有 `svg image, svg use` 选择器兜底 |
+| 拼音库懒加载 | ✅ 已完成 | ensurePinyinLib 动态注入，勿改为首屏静态引入 |
+
+## 七、已知风险与开发纪律
+
+1. **SW 缓存一致性**：SHELL 清单必须随文件增删同步 + VERSION 递增；缓存优先+后台刷新策略
+   → 发版后用户需刷新两次（或关标签重开）才拿到新资源
+2. **jsdom ≠ Chrome**：XML 命名空间行为有引擎差异——Chrome 的 XML 文档里
+   `image[xlink\:href]` 属性选择器匹配不到带命名空间属性而 jsdom 可以
+   （SVG 封面空白事故，commit 928b708）。凡涉 XML 解析/命名空间的行为，
+   一律真浏览器验证，不信 jsdom 等价性
+3. **requestIdleCallback 必须传字典参数**：`ric.call(win, step, {timeout:500})`，
+   数字第二参在 Firefox 会抛错（拼音 v9 事故）
+4. **潜在隐患备忘**：materializeResource 在 makeResourceUrl 失败时仍无条件摘除 data-rpath
+   （.catch 吞错后清理照跑）——属健壮性缺口，下次动媒体管线时顺手加固
+5. **回归测试资产**：本仓库暂无自动化测试；历次排查用的 harness（真实 Chrome E2E、
+   拼音回归）存于会话临时目录，属一次性资产。若某功能反复出问题，考虑将其固化进仓库
