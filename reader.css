@@ -20,6 +20,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-
 body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 button { border: 0; background: var(--button); color: var(--fg); border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer; font-size: var(--fs-sm); transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
 button:hover { filter: brightness(.96); }
+button:active:not(:disabled) { transform: scale(.96); }
 /* 三级按钮体系: 主操作=实底强调色 / 次级=中性面 / 危险=红调 */
 .btnPrimary { background: var(--accent); color: var(--bg); font-weight: 500; border-radius: var(--r-md); padding: 9px 20px; font-size: var(--fs-md); box-shadow: var(--shadow-1); }
 .btnPrimary:hover { filter: brightness(1.08); }
@@ -179,7 +180,7 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .ghostBtn { background: transparent; color: var(--muted); font-size: 12px; padding: 4px 10px; }
 .ghostBtn:hover { background: var(--button); filter: none; color: var(--fg); }
 @media (prefers-reduced-motion: reduce) {
-  .sidebar, .settingsPanel, #toast, .viewport { transition: none !important; }
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 @media (max-width: 700px) {
   .sidebar { width: min(380px, 92vw); }
