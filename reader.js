@@ -221,6 +221,7 @@ const state = {
   unitIdx: 0,
   auto: false,
   readMode: localStorage.getItem("readMode") === "paged" ? "paged" : "scroll",
+  shelfView: localStorage.getItem("shelfView") === "list" ? "list" : "grid",
   renderWhole: false,
   wholeLoaded: false,
   pageIdx: 0,
@@ -395,7 +396,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","autoSpeed","contentMax","contentLimited","sidePinned"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","shelfView","autoSpeed","contentMax","contentLimited","sidePinned"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -477,6 +478,8 @@ function restorePrefsFromStorage() {
   state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
   state.sidePinned = localStorage.getItem("sidePinned") === "1";
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
+  state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
+  syncViewChips();
 }
 function syncAllPrefsUI() {
   $("fontFamilySel").value = state.fontFamily;
@@ -646,6 +649,23 @@ function batchRemoveSel() {
   } } });
 }
 
+/* 书架视图切换: 网格(默认)/列表, 持久化+随备份走 */
+function syncViewChips() {
+  for (const b of document.querySelectorAll(".viewChip")) {
+    const on = b.dataset.view === state.shelfView;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
+}
+function setShelfView(v) {
+  v = v === "list" ? "list" : "grid";
+  if (v === state.shelfView) return;
+  state.shelfView = v;
+  try { localStorage.setItem("shelfView", v); } catch {}
+  syncViewChips();
+  if (!$("welcome").hidden) renderShelf();
+}
+
 async function renderShelf() {
   const wrap = $("shelf"), list = $("shelfList");
   let metas = [], fileKeys = [];
@@ -660,12 +680,17 @@ async function renderShelf() {
   metas = allMetas.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0)).slice(0, 15);
   /* 编辑模式下即使列表暂空(全部处于撤销挂起期)也保持面板可见, 否则完成/全选按钮消失且撤销后无法继续编辑 */
   wrap.hidden = metas.length === 0 && !shelfEditMode;
+  const gridView = state.shelfView === "grid";
+  list.classList.toggle("grid", gridView);
   list.textContent = "";
   shelfRenderedIds = metas.map(m => m.id);
   for (const m of metas) {
-    const b = document.createElement("div");
-    b.className = "shelfItem";
     const isGhost = !linked.has(m.id);
+    const pos = m.chapters ? t("shelfPos", ((m.u ?? m.i) || 0) + 1, m.chapters) : "";
+    const dateStr = new Date(m.lastOpened || Date.now()).toLocaleDateString(currentLang() === "en" ? "en-US" : "zh-CN");
+    /* 卡片复用 .shelfItem 基类(角色/选中态/测试选择器一致), 视觉差异全部走上下文CSS */
+    const b = document.createElement("div");
+    b.className = gridView ? "shelfItem shelfCard" : "shelfItem";
     if (isGhost) b.classList.add("ghost");
     b.setAttribute("role", "button");
     b.tabIndex = 0;
@@ -682,14 +707,38 @@ async function renderShelf() {
     titleEl.textContent = m.title;
     const info = document.createElement("span");
     info.className = "shelfInfo";
-    const pos = m.chapters ? t("shelfPos", ((m.u ?? m.i) || 0) + 1, m.chapters) : "";
-    const dateStr = new Date(m.lastOpened || Date.now()).toLocaleDateString(currentLang() === "en" ? "en-US" : "zh-CN");
     info.textContent = pos + dateStr;
     const del = document.createElement("button");
     del.className = "shelfDel";
     del.title = t("shelfDelTip");
     del.setAttribute("aria-label", `${t("shelfDelTip")}: ${m.title}`);
     del.textContent = "×";
+    if (gridView) {
+      /* 封面占位: 书名首字 + 由书名哈希出的固定色相; 底部细进度条 */
+      let hue = 0;
+      for (let i = 0; i < m.title.length; i++) hue = (hue * 31 + m.title.codePointAt(i)) % 360;
+      const cover = document.createElement("span");
+      cover.className = "cardCover";
+      cover.style.setProperty("--ch", String(hue));
+      cover.setAttribute("aria-hidden", "true");
+      const glyph = document.createElement("span");
+      glyph.className = "coverGlyph";
+      glyph.textContent = [...m.title.trim()][0] || "书";
+      cover.appendChild(glyph);
+      const p = loadProgress(m.title, m.size);
+      if (p && m.chapters) {
+        const pct = Math.round(((p.i + (p.r || 0)) / m.chapters) * 100);
+        if (pct > 0 && pct < 100) {
+          const bar = document.createElement("i");
+          bar.className = "cardProg";
+          bar.style.width = `${Math.max(4, Math.min(100, pct))}%`;
+          cover.appendChild(bar);
+        }
+      }
+      b.appendChild(cover);
+      /* 编辑模式卡片不渲染单删键(勾选即操作入口), 删除仅浏览态提供 */
+      if (!shelfEditMode) b.appendChild(del);
+    }
     let badge = null;
     if (isGhost) {
       badge = document.createElement("span");
@@ -708,7 +757,8 @@ async function renderShelf() {
     };
     b.setAttribute("aria-label", `${m.title}，${pos}${dateStr}${isGhost ? "，" + t("shelfGhost") : ""}${shelfEditMode && shelfSel.has(m.id) ? "，" + t("selOn") : ""}`);
     if (check) b.appendChild(check);
-    b.append(titleEl, info, del);
+    if (gridView) b.append(titleEl, info);
+    else b.append(titleEl, info, del);
     if (badge) b.appendChild(badge);
     list.appendChild(b);
   }
@@ -2590,6 +2640,10 @@ $("editShelfBtn").onclick = () => setShelfEditMode(true);
 $("doneEditBtn").onclick = () => setShelfEditMode(false);
 $("selAllBtn").onclick = toggleSelAll;
 $("delSelBtn").onclick = batchRemoveSel;
+for (const b of document.querySelectorAll(".viewChip")) {
+  b.onclick = () => setShelfView(b.dataset.view);
+}
+syncViewChips();
 
 window.addEventListener("keydown", handleKey);
 

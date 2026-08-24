@@ -423,6 +423,37 @@ window.__buildEpub = (title, padTo = 0) => {
   ok(editFlow.oneDel && editFlow.purgedOne, "单选删除超时后真正清除记录");
   ok(editFlow.exitedViaEsc, "Escape 退出编辑模式");
 
+  /* ---- 9e. 书架双视图: 网格默认/设置面板切换/持久化 ---- */
+  const viewA = await evalJs(`
+(() => ({
+  defGrid: state.shelfView === "grid" && document.getElementById("shelfList").classList.contains("grid"),
+  covers: document.querySelectorAll("#shelfList .cardCover").length,
+  chips: [...document.querySelectorAll(".viewChip")].map(b => b.dataset.view + ":" + b.classList.contains("active")).join(","),
+  cardDel: !!document.querySelector("#shelfList .shelfItem .shelfDel")
+}))()
+`);
+  ok(viewA.defGrid && viewA.covers >= 2 && viewA.cardDel, `默认网格视图且卡片带封面(封面${viewA.covers}个)`);
+  ok(viewA.chips === "grid:true,list:false", "视图chips默认态正确: " + viewA.chips);
+  await evalJs(`[...document.querySelectorAll(".viewChip")].find(b => b.dataset.view === "list").click()`);
+  await sleep(150);
+  const viewB = await evalJs(`
+(() => ({
+  listMode: state.shelfView === "list" && !document.getElementById("shelfList").classList.contains("grid"),
+  rows: document.querySelectorAll("#shelfList .shelfItem").length,
+  dels: document.querySelectorAll("#shelfList .shelfDel").length,
+  noCover: document.querySelectorAll("#shelfList .cardCover").length === 0,
+  stored: localStorage.getItem("shelfView")
+}))()
+`);
+  ok(viewB.listMode && viewB.rows >= 2 && viewB.dels === viewB.rows && viewB.noCover && viewB.stored === "list", "切列表: 行渲染+删除键在列+存储写入");
+  await evalJs(`location.reload()`);
+  await sleep(1800);
+  const viewC = await evalJs(`state.shelfView === "list" && !document.getElementById("shelfList").classList.contains("grid")`);
+  ok(viewC, "重载后保持列表视图");
+  await evalJs(`[...document.querySelectorAll(".viewChip")].find(b => b.dataset.view === "grid").click()`);
+  await sleep(150);
+  ok(await evalJs(`localStorage.getItem("shelfView") === "grid" && document.getElementById("shelfList").classList.contains("grid")`), "切回网格并存储");
+
   /* ---- 10. 清理测试数据, 收尾检查 console ---- */
   await evalJs(`
 (async () => {
