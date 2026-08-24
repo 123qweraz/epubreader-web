@@ -731,10 +731,6 @@ async function renderShelf() {
       cover.className = "cardCover";
       cover.style.setProperty("--ch", String(hue));
       cover.setAttribute("aria-hidden", "true");
-      const glyph = document.createElement("span");
-      glyph.className = "coverGlyph";
-      glyph.textContent = [...m.title.trim()][0] || "书";
-      cover.appendChild(glyph);
       const p = loadProgress(m.title, m.size);
       if (p && m.chapters) {
         const pct = Math.round(((p.i + (p.r || 0)) / m.chapters) * 100);
