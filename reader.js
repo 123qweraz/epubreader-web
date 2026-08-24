@@ -2165,7 +2165,8 @@ function hslToHex(h, s, l) {
   const to = v => Math.round(f(v) * 255).toString(16).padStart(2, "0");
   return "#" + to(0) + to(8) + to(4);
 }
-/* 纸面为锚的全套外壳派生: 界面底色同色相深一档; 强调色微偏补色(+30°), 中性纸回落暖灰 */
+/* 纸面为锚的全套外壳派生: 界面底色同色相深一档; 强调色微偏补色(+30°), 中性纸回落暖灰;
+   饱和上限与明度窗放宽让强调色更鲜(仍保证与浅色文字的可读对比) */
 function derivePalette(paperHex) {
   const [h, s, l] = hexToHsl(paperHex);
   const shell = hslToHex(h, Math.max(0, s - 4), Math.min(94, Math.max(8, l - 4)));
@@ -2177,8 +2178,8 @@ function derivePalette(paperHex) {
     button: shade(shell, dk ? 0.13 : -0.08),
     muted: dk ? "#918b81" : "#77736c",
     accent: s < 8 ? (dk ? "#8a857b" : "#635b4f")
-      : dk ? hslToHex(ah, Math.min(s + 20, 70), Math.min(l + 25, 78))
-           : hslToHex(ah, Math.min(s + 20, 60), Math.max(30, Math.min(46, l - 45)))
+      : dk ? hslToHex(ah, Math.min(s + 26, 85), Math.min(l + 22, 72))
+           : hslToHex(ah, Math.min(s + 26, 78), Math.max(34, Math.min(44, l - 42)))
   };
 }
 function applyCustomTheme() {
