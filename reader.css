@@ -18,16 +18,20 @@
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-button { border: 0; background: var(--button); color: var(--fg); border-radius: 6px; padding: 7px 11px; cursor: pointer; }
+button { border: 0; background: var(--button); color: var(--fg); border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer; font-size: var(--fs-sm); transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
 button:hover { filter: brightness(.96); }
+/* 三级按钮体系: 主操作=实底强调色 / 次级=中性面 / 危险=红调 */
+.btnPrimary { background: var(--accent); color: var(--bg); font-weight: 500; border-radius: var(--r-md); padding: 9px 20px; font-size: var(--fs-md); box-shadow: var(--shadow-1); }
+.btnPrimary:hover { filter: brightness(1.08); }
+body.dark .btnPrimary:hover { filter: brightness(1.12); }
 .toolbar { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bar); border-bottom: 1px solid var(--border); position: relative; z-index: 5; }
 .title { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
-.toolbarRight { display: flex; gap: 5px; align-items: center; }
-.speedCtl { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.toolbarRight { display: flex; gap: 4px; align-items: center; }
+.speedCtl { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--fs-xs); }
 .speedCtl[hidden] { display: none; }
 .speedCtl input[type="range"] { width: 90px; accent-color: var(--accent); }
 button.active { background: var(--accent); color: var(--bg); }
-.iconBtn { font-size: 17px; }
+.iconBtn { width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; border-radius: var(--r-full); font-size: 17px; }
 .iconBtn svg { display: block; }
 .main { height: calc(100% - var(--chrome-h, 78px)); position: relative; }
 body.immersive { --chrome-h: 0px; }   /* 沉浸阅读: 工具栏+状态栏隐藏, 内容区扩展 */
@@ -39,9 +43,11 @@ body.immersive .toolbar, body.immersive .statusbar { display: none; }
 .shelfHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .shelf h2 { font-size: 15px; font-weight: 600; color: var(--fg); margin: 0; }
 .shelfHeadBtns { display: flex; align-items: center; gap: 6px; }
-.textBtn { font-size: 13px; padding: 5px 12px; }
-.textBtn.danger:not(:disabled) { color: #b3402f; }
-body.dark .textBtn.danger:not(:disabled) { color: #e08a7a; }
+.textBtn { font-size: var(--fs-sm); padding: 5px 13px; border-radius: var(--r-full); font-weight: 500; }
+.textBtn.danger:not(:disabled) { background: rgba(179,64,47,.12); color: #b3402f; }
+.textBtn.danger:not(:disabled):hover { filter: none; background: rgba(179,64,47,.2); }
+body.dark .textBtn.danger:not(:disabled) { background: rgba(224,138,122,.16); color: #e08a7a; }
+body.dark .textBtn.danger:not(:disabled):hover { filter: none; background: rgba(224,138,122,.26); }
 .textBtn.danger:disabled { opacity: .45; cursor: default; }
 .shelfMenu { position: fixed; z-index: 30; background: var(--bar); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: grid; padding: 5px; min-width: 180px; text-align: left; }
 .shelfMenu[hidden] { display: none; }
@@ -108,7 +114,7 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .settingRow { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg); }
 .settingSection { font-size: 12px; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
 .themeChips { display: flex; gap: 6px; flex: 1; align-items: center; }
-.themeChip { flex: 1; padding: 6px 4px; font-size: 13px; background: var(--button); white-space: nowrap; }
+.themeChip { flex: 1; padding: 6px 8px; font-size: var(--fs-xs); background: var(--button); white-space: nowrap; border-radius: var(--r-full); }
 .settingLabel { flex: 0 0 auto; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .settingRow input[type="range"] { flex: 1; accent-color: var(--accent); min-width: 0; }
