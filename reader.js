@@ -862,7 +862,9 @@ async function prepareSpineBody(item, fileIdx, whole) {
 
   const resources = new Set([
     ...body.querySelectorAll("img[src],image[href],image[xlink\\:href],audio[src],video[src],source[src],track[src],use[href],use[xlink\\:href]"),
-    ...body.querySelectorAll("[poster]")
+    ...body.querySelectorAll("[poster]"),
+    /* XHTML按XML解析时Chrome的属性选择器匹配不到带前缀的xlink:href, 类型选择器兜底(svg image/use) */
+    ...body.querySelectorAll("svg image, svg use")
   ]);
   await Promise.all([...resources].map(async el => {
     const attr = el.hasAttribute("src") ? "src" : el.hasAttribute("poster") ? "poster" : el.hasAttribute("href") ? "href" : "xlink:href";
