@@ -155,7 +155,7 @@ window.__buildEpub = (title, padTo = 0) => {
   ok(await evalJs(`document.querySelector(".backupRow") === null && document.querySelector(".backupHint") === null && document.getElementById("shelfMenu").closest("#shelf") !== null`), "旧备份行已移除, 菜单归属书架头");
   ok(await evalJs(`!!document.getElementById("editShelfBtn") && document.getElementById("shelfEditBtns").hidden && !document.getElementById("shelfIdleBtns").hidden`), "编辑按钮存在且默认非编辑态");
   ok(await evalJs(`document.getElementById("fileMenu") === null && document.getElementById("menuBtn") === null`), "阅读侧三点菜单保持移除");
-  ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && document.getElementById("closeBookBtn").textContent.trim() === "✕"`), "工具栏✕关闭按钮初始隐藏");
+  ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && !!document.getElementById("closeBookBtn").querySelector("svg")`), "工具栏✕关闭按钮初始隐藏(svg图标)");
   ok(await evalJs(`document.getElementById("relinkBtn").hidden === true`), "恢复按钮空库时隐藏");
   ok(await evalJs(`document.getElementById("searchStatus").getAttribute("role") === "status"`), "searchStatus 有 role=status");
 

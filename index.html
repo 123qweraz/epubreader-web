@@ -13,7 +13,7 @@
 <body>
   <header class="toolbar">
     <input id="fileInput" type="file" accept=".epub,application/epub+zip,.txt,text/plain" hidden>
-    <button id="tocBtn" class="iconBtn" title="目录" aria-expanded="false" data-i18n-title="toc">☰</button>
+    <button id="tocBtn" class="iconBtn" title="目录" aria-expanded="false" data-i18n-title="toc"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
     <button id="searchBtn" class="iconBtn" title="搜索" aria-expanded="false" data-i18n-title="search"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.6" y1="15.6" x2="21" y2="21"/></svg></button>
     <div class="title" id="bookTitle">EPUB Reader</div>
     <div class="toolbarRight">
@@ -22,10 +22,10 @@
         <input id="speedRange" type="range" min="1" max="10" step="1" aria-label="自动阅读速度" data-i18n-aria="autoReadSpeedAria">
         <span data-i18n="speedFast">快</span>
       </div>
-      <button id="autoBtn" title="自动阅读" aria-pressed="false" data-i18n-title="autoRead">▶</button>
-      <button id="modeBtn" title="切换滚动/翻页模式" aria-pressed="false" data-i18n-title="modeTip">↕</button>
-      <button id="settingsBtn" title="阅读设置" aria-expanded="false" data-i18n-title="settings">⚙</button>
-      <button id="closeBookBtn" class="iconBtn" title="关闭书籍" aria-label="关闭书籍" hidden data-i18n-title="closeBook" data-i18n-aria="closeBook">✕</button>
+      <button id="autoBtn" class="iconBtn" title="自动阅读" aria-pressed="false" data-i18n-title="autoRead"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button>
+      <button id="modeBtn" class="iconBtn" title="切换滚动/翻页模式" aria-pressed="false" data-i18n-title="modeTip"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></button>
+      <button id="settingsBtn" class="iconBtn" title="阅读设置" aria-expanded="false" data-i18n-title="settings"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="14" cy="7" r="2.4"/><circle cx="9" cy="17" r="2.4"/></svg></button>
+      <button id="closeBookBtn" class="iconBtn" title="关闭书籍" aria-label="关闭书籍" hidden data-i18n-title="closeBook" data-i18n-aria="closeBook"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </header>
 
@@ -180,7 +180,7 @@
         <div class="shelfHead">
           <h2 data-i18n="shelfH">书架</h2>
           <div class="shelfHeadBtns" id="shelfIdleBtns">
-            <button id="menuShelfBtn" class="iconBtn" title="更多" aria-haspopup="true" aria-expanded="false" data-i18n-title="moreTip">⋯</button>
+            <button id="menuShelfBtn" class="iconBtn" title="更多" aria-haspopup="true" aria-expanded="false" data-i18n-title="moreTip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg></button>
             <button id="editShelfBtn" class="textBtn" data-i18n="shelfEdit">编辑</button>
           </div>
           <div class="shelfHeadBtns" id="shelfEditBtns" hidden>
@@ -207,9 +207,9 @@
   </main>
 
   <footer class="statusbar">
-    <button id="sbPrev" class="statusZone left" title="上一章" data-i18n-title="sbPrevTip"><span class="zoneArrow">‹</span><span id="chapterLabel" data-i18n="noBook">未打开书籍</span></button>
+    <button id="sbPrev" class="statusZone left" title="上一章" data-i18n-title="sbPrevTip"><span class="zoneArrow"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg></span><span id="chapterLabel" data-i18n="noBook">未打开书籍</span></button>
     <div class="statusNav"><span id="pageInfo" hidden></span></div>
-    <button id="sbNext" class="statusZone right" title="下一章" data-i18n-title="sbNextTip"><span id="progress">0 / 0</span><span class="zoneArrow">›</span></button>
+    <button id="sbNext" class="statusZone right" title="下一章" data-i18n-title="sbNextTip"><span id="progress">0 / 0</span><span class="zoneArrow"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5"/></svg></span></button>
   </footer>
   <div id="dropOverlay" class="dropOverlay" hidden><span data-i18n="dropOverlay">松开以打开文件</span></div>
   <script src="i18n.js"></script>

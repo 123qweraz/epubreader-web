@@ -239,6 +239,16 @@ const state = {
   sidePinned: localStorage.getItem("sidePinned") === "1"
 };
 
+/* 动态切换的内联图标(静态图标直接写在HTML里) */
+const svgOpen = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const ICONS = {
+  play: '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="none" aria-hidden="true"><rect x="7" y="5.5" width="3.4" height="13" rx="1.2"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1.2"/></svg>',
+  scroll: `${svgOpen}<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>`,
+  paged: `${svgOpen}<path d="M9 8l-4 4 4 4M15 8l4 4-4 4"/></svg>`,
+  delX: `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`
+};
+
 function progressKey(title, size) { return `progress:${title}:${size ?? ""}`; }
 function loadProgress(title, size) {
   try {
@@ -487,7 +497,7 @@ function syncAllPrefsUI() {
   $("pinyinToggle").checked = state.showPinyin;
   $("contentMaxToggle").checked = state.contentLimited;
   $("speedRange").value = String(state.speed);
-  $("modeBtn").textContent = state.readMode === "paged" ? "↔" : "↕";
+  $("modeBtn").innerHTML = state.readMode === "paged" ? ICONS.paged : ICONS.scroll;
   $("modeBtn").setAttribute("aria-pressed", String(state.readMode === "paged"));
   syncContentInputs();
   syncFontSize();
@@ -712,7 +722,7 @@ async function renderShelf() {
     del.className = "shelfDel";
     del.title = t("shelfDelTip");
     del.setAttribute("aria-label", `${t("shelfDelTip")}: ${m.title}`);
-    del.textContent = "×";
+    del.innerHTML = ICONS.delX;
     if (gridView) {
       /* 封面占位: 书名首字 + 由书名哈希出的固定色相; 底部细进度条 */
       let hue = 0;
@@ -1643,7 +1653,7 @@ function setReadMode(mode) {
   if (mode === state.readMode) return;
   state.readMode = mode;
   localStorage.setItem("readMode", mode);
-  $("modeBtn").textContent = mode === "paged" ? "↔" : "↕";
+  $("modeBtn").innerHTML = mode === "paged" ? ICONS.paged : ICONS.scroll;
   $("modeBtn").setAttribute("aria-pressed", String(mode === "paged"));
   $("pageInfo").hidden = true;
   pagedCtx = null;
@@ -2121,7 +2131,7 @@ let lastAutoFlip = 0;
 
 function setAuto(on) {
   state.auto = on;
-  $("autoBtn").textContent = on ? "⏸" : "▶";
+  $("autoBtn").innerHTML = on ? ICONS.pause : ICONS.play;
   $("autoBtn").classList.toggle("active", on);
   $("autoBtn").setAttribute("aria-pressed", String(on));
   $("speedCtl").hidden = !on;
@@ -2437,7 +2447,7 @@ if ("launchQueue" in window) {
 }
 $("sbPrev").onclick = prevChapter;
 $("sbNext").onclick = nextChapter;
-$("modeBtn").textContent = state.readMode === "paged" ? "↔" : "↕";
+$("modeBtn").innerHTML = state.readMode === "paged" ? ICONS.paged : ICONS.scroll;
 $("modeBtn").setAttribute("aria-pressed", String(state.readMode === "paged"));
 $("modeBtn").onclick = () => setReadMode(state.readMode === "paged" ? "scroll" : "paged");
 $("searchInput").oninput = e => {
