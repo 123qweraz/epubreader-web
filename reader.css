@@ -47,10 +47,6 @@ body.immersive .toolbar, body.immersive .statusbar { display: none; }
 body.dark .textBtn.danger:not(:disabled) { background: rgba(224,138,122,.16); color: #e08a7a; }
 body.dark .textBtn.danger:not(:disabled):hover { filter: none; background: rgba(224,138,122,.26); }
 .textBtn.danger:disabled { opacity: .45; cursor: default; }
-.shelfMenu { position: fixed; z-index: 30; background: var(--bar); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); display: grid; padding: 6px; min-width: 180px; text-align: left; backdrop-filter: blur(8px); }
-.shelfMenu[hidden] { display: none; }
-.shelfMenu button { display: block; width: 100%; text-align: left; background: transparent; padding: 9px 12px; font-size: 14px; border-radius: var(--r-sm); }
-.shelfMenu button:hover { background: var(--button); filter: none; }
 .shelfItem { display: flex; width: 100%; gap: 10px; align-items: baseline; background: transparent; padding: 9px 10px; cursor: pointer; border-radius: 6px; position: relative; }
 .shelfItem:not(:last-child)::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 1px; background: var(--border); opacity: .6; pointer-events: none; }
 .shelfItem:hover, .shelfItem.sel { background: var(--button); }
@@ -125,6 +121,12 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 
 .settingsPanel { position: fixed; top: 54px; right: 10px; z-index: 20; background: var(--bar); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px; display: grid; gap: 10px; box-shadow: var(--shadow-2); min-width: 300px; backdrop-filter: blur(8px); }
 .settingsPanel[hidden] { display: none; }
+.setTabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.setTab { flex: 1; background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; padding: 6px 10px; border-radius: var(--r-sm); }
+.setTab:hover { filter: none; background: var(--button); color: var(--fg); }
+.setTab.active { background: var(--button); color: var(--fg); }
+.setPage { display: grid; gap: 10px; }
+.setPage[hidden] { display: none; }
 .settingRow { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--fg); }
 .settingSection { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
 .settingsPanel select { appearance: none; -webkit-appearance: none; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--button) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center; padding: 6px 26px 6px 10px; font-size: var(--fs-sm); color: var(--fg); cursor: pointer; }

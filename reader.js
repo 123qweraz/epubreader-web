@@ -628,7 +628,6 @@ function setShelfEditMode(on) {
   shelfSel.clear();
   $("shelfIdleBtns").hidden = on;
   $("shelfEditBtns").hidden = !on;
-  closeShelfMenu();
   renderShelf();
 }
 function toggleSelAll() {
@@ -2138,7 +2137,7 @@ function setAuto(on) {
 function handleKey(e) {
   const el = e.target;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) {
-    if (e.key === "Escape") { el.blur?.(); $("settingsPanel").hidden = true; closeShelfMenu(); syncOverlayAria(); }
+    if (e.key === "Escape") { el.blur?.(); $("settingsPanel").hidden = true; syncOverlayAria(); }
     return;
   }
   const paged = state.readMode === "paged";
@@ -2146,7 +2145,7 @@ function handleKey(e) {
   else if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); paged ? flipPage(-1) : prevPage(); }
   else if (e.key === "ArrowRight") { e.preventDefault(); paged ? flipPage(1) : nextChapter(); }
   else if (e.key === "ArrowLeft") { e.preventDefault(); paged ? flipPage(-1) : prevChapter(); }
-  else if (e.key === "Escape") { closeOverlays(); closeShelfMenu(); setShelfEditMode(false); }
+  else if (e.key === "Escape") { closeOverlays(); setShelfEditMode(false); }
 }
 
 function applyTheme() {
@@ -2613,35 +2612,11 @@ $("contentMaxToggle").onchange = e => {
 document.addEventListener("click", e => {
   const p = $("settingsPanel");
   if (!p.hidden && !p.contains(e.target) && e.target !== $("settingsBtn")) p.hidden = true;
-  const m = $("shelfMenu");
-  if (!m.hidden && !m.contains(e.target) && e.target !== $("menuShelfBtn")) closeShelfMenu();
   syncOverlayAria();
 });
 $("main").addEventListener("click", closeOverlays);
 
-/* ---------- 书架三点菜单与编辑模式绑定 ---------- */
-function syncShelfMenuAria() {
-  $("menuShelfBtn").setAttribute("aria-expanded", String(!$("shelfMenu").hidden));
-}
-function closeShelfMenu() {
-  if ($("shelfMenu").hidden) return;
-  $("shelfMenu").hidden = true;
-  syncShelfMenuAria();
-}
-$("menuShelfBtn").onclick = e => {
-  e.stopPropagation();
-  const m = $("shelfMenu");
-  if (m.hidden) {
-    const r = $("menuShelfBtn").getBoundingClientRect();
-    m.style.top = `${Math.round(r.bottom + 6)}px`;
-    m.style.left = "auto";
-    m.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
-    m.hidden = false;
-  } else {
-    m.hidden = true;
-  }
-  syncShelfMenuAria();
-};
+/* ---------- 书架编辑模式与设置分页绑定 ---------- */
 $("editShelfBtn").onclick = () => setShelfEditMode(true);
 $("doneEditBtn").onclick = () => setShelfEditMode(false);
 $("selAllBtn").onclick = toggleSelAll;
@@ -2650,6 +2625,18 @@ for (const b of document.querySelectorAll(".viewChip")) {
   b.onclick = () => setShelfView(b.dataset.view);
 }
 syncViewChips();
+
+/* ---------- 设置面板分页: 外观/排版/备份 ---------- */
+for (const b of document.querySelectorAll(".setTab")) {
+  b.onclick = () => {
+    for (const t of document.querySelectorAll(".setTab")) {
+      const on = t === b;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", String(on));
+    }
+    for (const pg of document.querySelectorAll(".setPage")) pg.hidden = pg.dataset.page !== b.dataset.tab;
+  };
+}
 
 window.addEventListener("keydown", handleKey);
 

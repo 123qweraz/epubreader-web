@@ -30,6 +30,12 @@
   </header>
 
   <div id="settingsPanel" class="settingsPanel" hidden>
+    <div class="setTabs" role="tablist" aria-label="设置分区">
+      <button class="setTab active" role="tab" aria-selected="true" data-tab="appearance" data-i18n="tabAppearance">外观</button>
+      <button class="setTab" role="tab" aria-selected="false" data-tab="layout" data-i18n="tabLayout">排版</button>
+      <button class="setTab" role="tab" aria-selected="false" data-tab="backup" data-i18n="tabBackup">备份</button>
+    </div>
+    <div class="setPage" data-page="appearance">
     <div class="settingSection">Language 语言</div>
     <div class="settingRow">
       <div class="themeChips">
@@ -94,6 +100,8 @@
       </div>
     </div>
     <button id="ctReset" class="settingReset" data-i18n="ctReset">重置本槽为初始配色</button>
+    </div>
+    <div class="setPage" data-page="backup" hidden>
     <div class="settingSection" data-i18n="secShelf">书架</div>
     <div class="settingRow">
       <span class="settingLabel" data-i18n="shelfViewLabel">视图</span>
@@ -102,6 +110,13 @@
         <button class="themeChip viewChip" data-view="list" data-i18n="viewList">列表</button>
       </div>
     </div>
+    <div class="settingSection" data-i18n="secBackup">数据备份</div>
+    <div class="settingRow">
+      <button id="exportData" class="textBtn" data-i18n="exportData">导出阅读数据</button>
+      <button id="importData" class="textBtn" data-i18n="importData">导入阅读数据</button>
+    </div>
+    </div>
+    <div class="setPage" data-page="layout" hidden>
     <div class="settingSection" data-i18n="secType">排版</div>
     <div class="settingRow">
       <span class="settingLabel" data-i18n="fontSize">字号</span>
@@ -151,6 +166,7 @@
       <input id="contentMaxNum" class="settingNum" type="number" min="480" max="1920" step="10" aria-label="正文宽度数值" data-i18n-aria="contentMaxNumAria">
     </div>
     <button id="sideReset" class="settingReset" data-i18n="sideReset">恢复默认</button>
+    </div>
   </div>
 
   <aside id="sidebar" class="sidebar">
@@ -180,7 +196,6 @@
         <div class="shelfHead">
           <h2 data-i18n="shelfH">书架</h2>
           <div class="shelfHeadBtns" id="shelfIdleBtns">
-            <button id="menuShelfBtn" class="iconBtn" title="更多" aria-haspopup="true" aria-expanded="false" data-i18n-title="moreTip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg></button>
             <button id="editShelfBtn" class="textBtn" data-i18n="shelfEdit">编辑</button>
           </div>
           <div class="shelfHeadBtns" id="shelfEditBtns" hidden>
@@ -192,10 +207,6 @@
         <button id="relinkBtn" class="ghostBtn relinkBtn" hidden data-i18n="relinkBtn">恢复未关联书籍</button>
         <div id="shelfList"></div>
         <input id="backupInput" type="file" accept=".json,application/json" hidden>
-        <div id="shelfMenu" class="shelfMenu" role="menu" hidden>
-          <button id="exportData" role="menuitem" data-i18n="exportData">导出阅读数据</button>
-          <button id="importData" role="menuitem" data-i18n="importData">导入阅读数据</button>
-        </div>
       </div>
     </section>
 

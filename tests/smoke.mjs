@@ -151,8 +151,8 @@ window.__buildEpub = (title, padTo = 0) => {
 `);
 
   /* ---- 1. 静态结构 ---- */
-  ok(await evalJs(`!!document.getElementById("menuShelfBtn") && !!document.getElementById("shelfMenu") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput")`), "书架头部三点菜单含导出/导入项");
-  ok(await evalJs(`document.querySelector(".backupRow") === null && document.querySelector(".backupHint") === null && document.getElementById("shelfMenu").closest("#shelf") !== null`), "旧备份行已移除, 菜单归属书架头");
+  ok(await evalJs(`!!document.querySelector(".setTabs") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput") && document.getElementById("exportData").closest("#settingsPanel") !== null`), "设置面板分页含备份页导出/导入");
+  ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 3 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden`), "三分页结构且默认外观页, 旧菜单已移除");
   ok(await evalJs(`!!document.getElementById("editShelfBtn") && document.getElementById("shelfEditBtns").hidden && !document.getElementById("shelfIdleBtns").hidden`), "编辑按钮存在且默认非编辑态");
   ok(await evalJs(`document.getElementById("fileMenu") === null && document.getElementById("menuBtn") === null`), "阅读侧三点菜单保持移除");
   ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && !!document.getElementById("closeBookBtn").querySelector("svg")`), "工具栏✕关闭按钮初始隐藏(svg图标)");
@@ -178,12 +178,12 @@ window.__buildEpub = (title, padTo = 0) => {
   await evalJs(`[...document.querySelectorAll(".langChip")].find(b=>b.dataset.lang==="en").click()`);
   await sleep(50);
   ok(await evalJs(`document.getElementById("closeBookBtn").getAttribute("aria-label") === "Close book" && document.getElementById("closeBookBtn").title === "Close book"`), "关闭按钮英文 title/aria-label 同步");
-  await evalJs(`document.getElementById("menuShelfBtn").click()`);
+  await evalJs(`[...document.querySelectorAll(".setTab")].find(b => b.dataset.tab === "backup").click()`);
   await sleep(50);
-  ok(await evalJs(`!document.getElementById("shelfMenu").hidden && document.getElementById("exportData").textContent === "Export reading data"`), "菜单英文文案同步");
-  await evalJs(`document.body.click()`);
+  ok(await evalJs(`!document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="appearance"]').hidden && document.getElementById("exportData").textContent === "Export reading data"`), "备份分页切换+英文文案同步");
+  await evalJs(`[...document.querySelectorAll(".setTab")].find(b => b.dataset.tab === "appearance").click()`);
   await sleep(50);
-  ok(await evalJs(`document.getElementById("shelfMenu").hidden`), "点击外部关闭书架菜单");
+  ok(await evalJs(`!document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden`), "切回外观分页");
   await evalJs(`[...document.querySelectorAll(".langChip")].find(b=>b.dataset.lang==="zh").click()`);
 
   /* ---- 4. toast 动作扩展 ---- */
