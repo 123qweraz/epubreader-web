@@ -86,10 +86,46 @@ class ZipReader {
       out = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer());
     } else throw new Error(t("zipMethod", ent.method));
     if (ent.crc && crc32(out) !== ent.crc) throw new Error(t("crcFail", name));
+    /* 字体反混淆钩子: 加密条目在解压+CRC校验后原地XOR还原(setupFontDecrypt 注册) */
+    if (this.decryptors?.has(name)) out = await this.decryptors.get(name)(out);
     return out.buffer;
   }
   /* 文本资源统一入口: BOM 探测(utf-16)→严格utf-8→gbk 回退, 覆盖中文工具产出的各类编码 */
   async readText(name) { return decodeTextFile(await this.read(name)); }
+}
+
+/* ---------- encryption.xml 字体反混淆(IDPF/Adobe 双算法) ----------
+   规范: 字体数据压缩前混淆, 故解压+CRC后XOR前N字节即可还原(N: IDPF=1040, Adobe=1024);
+   密钥=OPF唯一标识符的SHA-1(20字节循环XOR)。IDPF算法要求标识符去全部空白。
+   crypto.subtle 需安全上下文(localhost/httpS 均满足) */
+const FONT_DEOB_LENGTH = { "http://www.idpf.org/2008/embedding": 1040, "http://ns.adobe.com/pdf/enc#RC": 1024 };
+async function setupFontDecrypt(zip, opfPath, opf) {
+  let encXml;
+  try { encXml = await zip.readText("META-INF/encryption.xml"); }
+  catch { return; }   /* 无加密清单: 绝大多数书 */
+  const doc = xmlDoc(encXml);
+  if (doc.getElementsByTagName("parsererror").length) return;
+  const uidEl = [...all(opf, "identifier")].find(x => x.getAttribute("id") === (first(opf, "package") || opf.documentElement)?.getAttribute("unique-identifier"));
+  if (!uidEl) return;
+  const uid = uidEl.textContent || "";
+  for (const ed of doc.getElementsByTagNameNS("*", "EncryptedData")) {
+    const algo = [...ed.getElementsByTagNameNS("*", "EncryptionMethod")][0]?.getAttribute("Algorithm");
+    const n = FONT_DEOB_LENGTH[algo || ""];
+    if (!n) continue;
+    const uri = [...ed.getElementsByTagNameNS("*", "CipherReference")][0]?.getAttribute("URI");
+    if (!uri) continue;
+    /* CipherReference 相对容器根; 个别工具写成相对OPF目录, 双候选兜底 */
+    const cands = [normalize(safeDecode(uri)), resolvePath(opfPath, safeDecode(uri))];
+    const target = cands.find(c => zip.entries.has(c));
+    if (!target) continue;
+    const keyStr = algo.includes("adobe") ? uid : uid.replace(/\s+/g, "");
+    const keyBytes = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(keyStr)));
+    if (!zip.decryptors) zip.decryptors = new Map();
+    zip.decryptors.set(target, u8 => {
+      for (let i = 0; i < Math.min(n, u8.length); i++) u8[i] ^= keyBytes[i % keyBytes.length];
+      return u8;
+    });
+  }
 }
 
 function normalize(path) {

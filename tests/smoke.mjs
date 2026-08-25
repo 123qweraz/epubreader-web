@@ -357,6 +357,38 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "srcset书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(150);
 
+  /* encryption.xml 字体反混淆(IDPF): 存储字节=XOR(明文前1040, sha1(去空白uid)循环) */
+  await evalJs(`(async () => {
+    const keyRaw = " urn:uuid:obf-test-key ";   /* 首尾+内部含空白, 验证IDPF规范化去空白 */
+    const key = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(keyRaw.replace(/\\s+/g, ""))));
+    const plain = new Uint8Array(2048);
+    for (let i = 0; i < plain.length; i++) plain[i] = i & 255;
+    const stored = plain.slice();
+    for (let i = 0; i < 1040; i++) stored[i] ^= key[i % 20];
+    const f = [
+      ["mimetype", "application/epub+zip"],
+      ["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+      ["META-INF/encryption.xml", '<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/><enc:CipherData><enc:CipherReference URI="OEBPS/fonts/f.ttf"/></enc:CipherData></enc:EncryptedData></encryption>'],
+      ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>混淆字体书</dc:title><dc:identifier id="uid">' + keyRaw + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+      ["OEBPS/c1.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><head><style>@font-face{font-family:F;src:url(fonts/f.ttf)}</style></head><body><p style="font-family:F">正文内容用于滚动。</p></body></html>'],
+      ["OEBPS/fonts/f.ttf", stored]
+    ];
+    await openBookFile(window.__makeEpubFile(window.__assembleZip(f), "混淆字体书.epub"));
+  })()`);
+  await sleep(900);
+  const obf = await evalJs(`(async () => {
+    const buf = new Uint8Array(await state.zip.read("OEBPS/fonts/f.ttf"));
+    let head = true;
+    for (let i = 0; i < 16; i++) if (buf[i] !== (i & 255)) head = false;
+    return { registered: state.zip.decryptors?.size === 1, head, len: buf.length,
+             cssFontApplied: document.getElementById("bookFrame").contentDocument.body.textContent.includes("正文内容") };
+  })()`);
+  ok(obf.registered && obf.head && obf.len === 2048 && obf.cssFontApplied, "容错: IDPF混淆字体经encryption.xml注册钩子读取时逐字节还原");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(250);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "混淆字体书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(150);
+
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */

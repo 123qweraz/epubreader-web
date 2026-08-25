@@ -936,6 +936,7 @@ async function openEpub(file) {
   const zip = new ZipReader(await file.arrayBuffer());
   const parsed = await parseEpub(zip);
   if (!parsed) throw new Error(t("noOpf"));
+  await setupFontDecrypt(zip, parsed.opfPath, parsed.opf);   /* encryption.xml字体反混淆: 注册后所有read透明还原 */
   const { opfPath, opf, manifest, spine } = parsed;
   if (!spine.length) throw new Error(t("noSpine"));
   const metaTitle = parsed.opfTitle || file.name.replace(/\.epub$/i, "");
