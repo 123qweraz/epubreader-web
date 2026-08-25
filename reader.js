@@ -280,7 +280,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -348,6 +348,7 @@ function restorePrefsFromStorage() {
   state.fontSize = numOk("fontSize", 10, 36) ?? 18;
   state.lineHeight = Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75));
   state.fontFamily = localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif";
+  state.vertical = localStorage.getItem("vertical") === "1";
   state.bookFontFirst = localStorage.getItem("bookFontFirst") !== "0";
   state.theme = ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light";
   state.customSlots = loadCustomSlots();
@@ -363,6 +364,8 @@ function restorePrefsFromStorage() {
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
   syncSettingsPinned();
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
+  /* 竖排阅读(仅翻页模式): 传统右起左行, 开启时若在滚动模式会被自动切到翻页 */
+  state.vertical = localStorage.getItem("vertical") === "1";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
   syncViewChips();
 }
@@ -1231,6 +1234,12 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
   const paged = state.readMode === "paged";
   const inner = paged ? `<div class="pgflow">${bodyHtml}</div>` : bodyHtml;
   const pagedStyle = paged ? pagedCss(pagedPageWidth()) : "";
+  /* 竖排一期(仅翻页模式): 右起左行; column-width=视口高度, 列沿X轴扩展需column-fill:balance */
+  const vertStyle = state.vertical
+    ? (paged
+        ? `body{writing-mode:vertical-rl;height:auto;} .pgflow{height:auto;column-fill:balance;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}`
+        : `body{writing-mode:vertical-rl;overflow-x:auto;} img,svg,video{max-width:calc(100vh - 80px);max-height:calc(100vw - 80px);}`)
+    : "";
   /* 书籍字体优先: 字体栈注入在书籍样式之前, 书籍任何字体声明(含@font-face内嵌)自然覆盖;
      强制模式: 注入回书籍样式之后并加!important做正文级替换(保留书籍标题专用字体与图标字体) */
   const preFont = state.bookFontFirst ? `<style>body{font-family:${fontFamilyCss()};}</style>` : "";
@@ -1249,6 +1258,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;} .pgflow{transition:none !important;}}
     ${extraCss}
     ${pagedStyle}
+    ${vertStyle}
     ${pinyinCss}
   </style></head><body>${inner}</body></html>`;
 }
@@ -1666,8 +1676,8 @@ function handleKey(e) {
   const paged = state.readMode === "paged";
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); paged ? flipPage(1) : nextPage(); }
   else if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); paged ? flipPage(-1) : prevPage(); }
-  else if (e.key === "ArrowRight") { e.preventDefault(); paged ? flipPage(1) : nextChapter(); }
-  else if (e.key === "ArrowLeft") { e.preventDefault(); paged ? flipPage(-1) : prevChapter(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); paged ? flipPage(state.vertical ? -1 : 1) : nextChapter(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); paged ? flipPage(state.vertical ? 1 : -1) : prevChapter(); }
   else if (e.key === "Escape") { closeOverlays(); setShelfEditMode(false); }
 }
 
@@ -2072,6 +2082,14 @@ $("sideReset").onclick = () => {
   syncFontSize(); syncLineHeight(); syncContentMax();
 };
 $("fontFamilySel").onchange = e => { state.fontFamily = e.target.value; applyTypography(); rerenderReader(); };
+$("verticalToggle").onchange = e => {
+  state.vertical = e.target.checked;
+  localStorage.setItem("vertical", state.vertical ? "1" : "0");
+  if (!state.book) return;
+  /* 竖排一期仅翻页模式: 滚动模式下开启 → 自动切翻页(setReadMode内部触发重渲染) */
+  if (state.vertical && state.readMode !== "paged") setReadMode("paged");
+  else rerenderReader();
+};
 $("bookFontToggle").onchange = e => {
   state.bookFontFirst = e.target.checked;
   localStorage.setItem("bookFontFirst", state.bookFontFirst ? "1" : "0");
@@ -2207,6 +2225,7 @@ $("viewport").addEventListener("transitionend", e => {
 
 
 $("fontFamilySel").value = state.fontFamily;
+$("verticalToggle").checked = state.vertical;
 $("bookFontToggle").checked = state.bookFontFirst;
 $("pinyinToggle").checked = state.showPinyin;
 $("contentMaxToggle").checked = state.contentLimited;

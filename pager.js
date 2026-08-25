@@ -5,7 +5,13 @@
 
 const PG_GAP = 48, PG_PADX = 48;
 function pagedPageWidth() {
-  const readerW = $("reader").clientWidth || 800;
+  const reader = $("reader");
+  /* 竖排: column-width = 视口高度(每列纵向填满屏幕, 列沿X轴扩展) */
+  if (state.vertical) {
+    const h = (reader.clientHeight || 600) - 80;
+    return Math.max(200, h);
+  }
+  const readerW = reader.clientWidth || 800;
   const base = state.contentLimited ? Math.min(readerW, state.contentMax) : readerW;
   return Math.max(200, base - PG_PADX * 2);
 }
@@ -37,9 +43,25 @@ function measurePaged() {
   const w = pagedPageWidth();
   pagedCtx.w = w;
   pagedCtx.stride = w + PG_GAP;
+  pagedCtx.vertical = !!state.vertical;
   flow.style.columnWidth = `${w}px`;
-  pagedCtx.pages = Math.max(1, Math.round((flow.scrollWidth + PG_GAP) / pagedCtx.stride));
+  if (pagedCtx.vertical) {
+    /* 竖排: CSS columns 沿纵轴堆叠, 翻页沿Y轴 translateY */
+    const win = pagedCtx.doc.defaultView;
+    pagedCtx.clientHeight = (win ? win.innerHeight : 0) || flow.clientHeight || 600;
+    pagedCtx.pages = Math.max(1, Math.ceil(flow.scrollHeight / pagedCtx.clientHeight));
+  } else {
+    pagedCtx.totalW = flow.scrollWidth;
+    pagedCtx.pages = Math.max(1, Math.round((flow.scrollWidth + PG_GAP) / pagedCtx.stride));
+  }
   state.filePages = pagedCtx.pages;
+}
+
+/* 横排: translateX 自左向右滑(负向); 竖排: translateY 向下滚动 */
+function pageTx(i) {
+  const c = pagedCtx;
+  if (c.vertical) return -i * c.clientHeight;
+  return -i * c.stride;
 }
 
 function updatePageInfo() {
@@ -51,18 +73,19 @@ function updatePageInfo() {
 function applyPagedTransform(instant) {
   if (!pagedCtx) return;
   state.pageIdx = Math.max(0, Math.min(state.pageIdx, pagedCtx.pages - 1));
-  pyMarkMove();   /* 注音settle门控: 翻页位移与滚动同待遇 */
+  pyMarkMove();
   syncUnitForPage();
   const { flow } = pagedCtx;
+  const tx = pagedCtx.vertical ? `translateY(${pageTx(state.pageIdx)}px)` : `translateX(${pageTx(state.pageIdx)}px)`;
   if (instant) {
     const prev = flow.style.transition;
     flow.style.transition = "none";
-    flow.style.transform = `translateX(${-state.pageIdx * pagedCtx.stride}px)`;
+    flow.style.transform = tx;
     void flow.offsetWidth;
     flow.style.transition = prev;
   } else {
     flow.style.transition = "transform .28s ease";
-    flow.style.transform = `translateX(${-state.pageIdx * pagedCtx.stride}px)`;
+    flow.style.transform = tx;
   }
   updatePageInfo();
 }
@@ -72,8 +95,11 @@ function applyBump(dir) {
   if (!pagedCtx) return;
   const { flow } = pagedCtx;
   clearTimeout(bumpTimer);
+  const bumpTx = pagedCtx.vertical
+    ? `translateY(${pageTx(state.pageIdx) - dir * 18}px)`
+    : `translateX(${pageTx(state.pageIdx) - dir * 18}px)`;
   flow.style.transition = "transform .12s ease";
-  flow.style.transform = `translateX(${-(state.pageIdx * pagedCtx.stride) - dir * 18}px)`;
+  flow.style.transform = bumpTx;
   bumpTimer = setTimeout(() => applyPagedTransform(false), 130);
 }
 
@@ -86,9 +112,15 @@ function gotoPage(n, instant = false) {
 
 function anchorToPage(el) {
   if (!pagedCtx || !el) return null;
+  if (pagedCtx.vertical) {
+    /* 竖排: 沿 offsetTop 链累加得元素在 flow 坐标系中的 Y, 除以列高得页码 */
+    let top = 0;
+    for (let n = el; n && n !== pagedCtx.flow; n = n.offsetParent) top += n.offsetTop;
+    return Math.max(0, Math.min(pagedCtx.pages - 1, Math.floor(top / pagedCtx.clientHeight)));
+  }
   const fr = pagedCtx.flow.getBoundingClientRect();
-  return Math.max(0, Math.min(pagedCtx.pages - 1,
-    Math.floor((el.getBoundingClientRect().left - fr.left) / pagedCtx.stride)));
+  const phys = Math.floor((el.getBoundingClientRect().left - fr.left) / pagedCtx.stride);
+  return Math.max(0, Math.min(pagedCtx.pages - 1, phys));
 }
 
 function flipPage(dir) {
@@ -253,18 +285,19 @@ function frameTouchEnd(e) {
   if (e.changedTouches.length !== 1 || e.target?.closest?.("a[href],button")) return;
   const t = e.changedTouches[0];
   const dx = t.clientX - touchX, dy = t.clientY - touchY, dt = performance.now() - touchT;
-  /* 横向快扫翻页: 仅翻页模式消费; 滚动模式不拦截, 原生滚动照常 */
+  /* 横向快扫翻页: 仅翻页模式消费; 滚动模式不拦截, 原生滚动照常
+     竖排内容随页右移 → 右扫=下一页(与横排相反) */
   if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 600 && pagedActive()) {
     e.preventDefault();
-    flipPage(dx < 0 ? 1 : -1);
+    flipPage((dx < 0 ? 1 : -1) * (pagedCtx.vertical ? -1 : 1));
     return;
   }
   if (touchMoved || dt >= 300) return;   /* 拖选/长按不算点按 */
   const w = $("bookFrame")?.clientWidth;
   if (!w) return;
   if (pagedActive() && !(t.clientX > w * .3 && t.clientX < w * .7)) {
-    e.preventDefault();                  /* 左右30%分区: 上/下一页 */
-    flipPage(t.clientX > w * .5 ? 1 : -1);
+    e.preventDefault();                  /* 左右30%分区: 上/下一页; 竖排正文起于右侧 → 点左=下一页 */
+    flipPage((t.clientX > w * .5 ? 1 : -1) * (pagedCtx.vertical ? -1 : 1));
     return;
   }
   if (t.clientX > w * .3 && t.clientX < w * .7) {

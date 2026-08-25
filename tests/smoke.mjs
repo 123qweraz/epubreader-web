@@ -389,6 +389,52 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "混淆字体书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(150);
 
+  /* 竖排阅读(翻页模式): 开启后自动切翻页, body writing-mode=vertical-rl, flipPage产生正向translateX */
+  await evalJs(`openBookFile(window.__buildEpub("竖排测试书", 5000))`);
+  await sleep(350);
+  /* 启用竖排: 若当前为滚动模式 → 自动切翻页; poll等iframe重渲染完成 */
+  await evalJs(`document.getElementById("verticalToggle").checked = true; document.getElementById("verticalToggle").dispatchEvent(new Event("change"))`);
+  await sleep(800);
+  await evalJs(`(async()=>{ let n=0; await new Promise(done=>{ const w=()=>{ const d=document.getElementById("bookFrame").contentDocument; const ok=d&&d.body&&getComputedStyle(d.body).writingMode==="vertical-rl"; if(ok||++n>40) done(); else setTimeout(w,100); }; w(); }); })()`);
+  const vertInit = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const wm = d ? getComputedStyle(d.body).writingMode : "unknown";
+    const paged = document.getElementById("modeBtn").getAttribute("aria-pressed") === "true";
+    const pi = !document.getElementById("pageInfo").hidden;
+    const hasVert = d?.head?.innerHTML?.includes("vertical-rl") ?? false;
+    return { wm, paged, pi, vertical: state.vertical, hasVert, readMode: state.readMode };
+  })()`);
+  console.log("VERT DEBUG:", JSON.stringify(vertInit));
+  ok(vertInit.vertical && vertInit.paged && vertInit.wm === "vertical-rl" && vertInit.pi, "竖排: 开启后切翻页, iframe body writing-mode=vertical-rl");
+  await evalJs(`flipPage(1)`);
+  await sleep(400);
+  const vTx = await evalJs(`(() => {
+    const el = document.getElementById("bookFrame").contentDocument.querySelector(".pgflow");
+    if (!el) return { err: "no pgflow" };
+    const m = getComputedStyle(el).transform;
+    const sw = el.scrollWidth, cw = el.clientWidth, sh = el.scrollHeight, ch = el.clientHeight;
+    const cols = getComputedStyle(el).columnWidth;
+    const ctx = typeof pagedCtx === "object" && pagedCtx ? { vertical: pagedCtx.vertical, pages: pagedCtx.pages, totalW: pagedCtx.totalW, stride: pagedCtx.stride, w: pagedCtx.w } : null;
+    const body = document.getElementById("bookFrame").contentDocument.body;
+    const bodyW = body.scrollWidth, bodyH = body.scrollHeight;
+    const bodyCS = getComputedStyle(body);
+    return { m, sw, cw, sh, ch, cols, ctx, pageIdx: typeof state !== "undefined" ? state.pageIdx : -1, bodyW, bodyH, bodyWM: bodyCS.writingMode, bodyOW: bodyCS.overflow, bodyOY: bodyCS.overflowY, bodyOX: bodyCS.overflowX };
+  })()`);
+  console.log("FLIP DEBUG:", JSON.stringify(vTx));
+  ok(vTx.m && vTx.m !== "none" && vTx.ctx?.vertical && vTx.ctx?.pages > 1, "竖排: flipPage(1) 产生位移且竖排上下文有效");
+  /* 关闭竖排 → 恢复 horizontal-tb */
+  await evalJs(`document.getElementById("verticalToggle").checked = false; document.getElementById("verticalToggle").dispatchEvent(new Event("change"))`);
+  await evalJs(`(async()=>{ let n=0; await new Promise(done=>{ const w=()=>{ const d=document.getElementById("bookFrame").contentDocument; const ok=d&&d.body&&getComputedStyle(d.body).writingMode==="horizontal-tb"; if(ok||++n>40) done(); else setTimeout(w,100); }; w(); }); })()`);
+  const vOff = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { wm: d ? getComputedStyle(d.body).writingMode : "unknown", vertical: state.vertical };
+  })()`);
+  ok(!vOff.vertical && vOff.wm === "horizontal-tb", "竖排: 关闭后 writing-mode 恢复 horizontal-tb");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(250);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "竖排测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(150);
+
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */
