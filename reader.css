@@ -147,6 +147,13 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .segCtl button.active { background: var(--accent); color: var(--bg); }
 /* 纯拼音替换文本: 与正文同字号渲染, 稍降不透明度提示为音译 */
 .pyRep { opacity: .92; }
+/* 打字模式token: 当前=反色高亮, 已完成=淡出, 错误=红闪抖动(宽松不阻塞) */
+.twTok { border-radius: 2px; }
+.twTok.twCur { background: var(--accent); color: var(--bg); }
+.twTok.twGot { opacity: .38; }
+.twTok.twErr { background: #b3402f; color: #fff; animation: twShake .2s ease; }
+@keyframes twShake { 0%, 100% { transform: none; } 50% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .twTok.twErr { animation: none; } }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }

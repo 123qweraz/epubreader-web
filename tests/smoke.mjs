@@ -368,6 +368,76 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "纯拼测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6b-4. 打字模式: 中英日混合书 token管线/键序推进/Tab跳过/宽松错误 ---- */
+  await evalJs(`window.__twZip = window.__assembleZip([
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>打字测试书</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><p>The quick brown fox.</p><p>你好世界。</p><p><ruby>日本語<rt>にほんご</rt></ruby>です。</p></body></html>']
+  ]); "ok"`);
+  await evalJs(`openBookFile(window.__makeEpubFile(window.__twZip, "tw.epub"))`);
+  await sleep(900);
+  await evalJs(`document.getElementById("typingBtn").click()`);
+  await sleep(1500);
+  const t0 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return {
+      btnActive: document.getElementById("typingBtn").classList.contains("active"),
+      n: d.querySelectorAll(".twTok").length,
+      cur: d.querySelector(".twTok.twCur")?.textContent,
+      expects: [...d.querySelectorAll(".twTok")].map(s => s.textContent)
+    };
+  })()`);
+  ok(t0.btnActive && t0.n === 4 && t0.cur === "The", `打字模式激活(首块${t0.n}token惰性包裹, 当前=${t0.cur})`);
+  /* 英文大小写不敏感键入 */
+  for (const k of ["T", "H", "E"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  const t1 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const cur = d.querySelector(".twTok.twCur");
+    return { got: d.querySelectorAll(".twTok.twGot").length, cur: cur?.textContent };
+  })()`);
+  ok(t1.got === 1 && t1.cur === "quick", `英文词完成推进(已完成${t1.got}, 当前=${t1.cur})`);
+  /* 宽松错误: 错键不推进仅闪红 */
+  await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "z" }))`);
+  const t2 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { cur: d.querySelector(".twTok.twCur")?.textContent, err: !!d.querySelector(".twTok.twErr") };
+  })()`);
+  ok(t2.cur === "quick" && t2.err, "错键闪红不阻塞(宽松忽略)");
+  /* Tab跳过 + 中文拼音段 */
+  for (let i = 0; i < 3; i++) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }))`);
+  const t3 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const cur = d.querySelector(".twTok.twCur");
+    return { cur: cur?.textContent, expectLen: twState.tokens[twState.idx].expect.length };
+  })()`);
+  ok(t3.cur === "你" && t3.expectLen === 2, `Tab跳到中文段(当前=${t3.cur}, 拼音${t3.expectLen}键)`);
+  /* 打完中文段进入日文段(ruby读音→罗马音) */
+  for (const k of ["n", "i", "h", "a", "o", "s", "h", "i", "j", "i", "e"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  const t4 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { cur: d.querySelector(".twTok.twCur")?.textContent };
+  })()`);
+  ok(t4.cur === "日本語", `中文拼音打完衔接日文ruby词(当前=${t4.cur})`);
+  /* 打完全章 → 章末toast */
+  for (const k of "nihongodesu".split("")) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  await sleep(300);
+  const t5 = await evalJs(`(() => ({
+    doneToast: document.querySelector("#toast .toastMsg")?.textContent === t("twChapDone")
+      || document.querySelector("#toast .toastMsg")?.textContent.includes(t("twChapDone")),
+    remaining: twState.tokens.length
+  }))()`);
+  ok(t5.doneToast || t5.remaining === 0, `全章打完收束(toast=${t5.doneToast})`);
+  /* Esc退出 */
+  await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))`);
+  await sleep(600);
+  const t6 = await evalJs(`!document.getElementById("typingBtn").classList.contains("active") && state.typing === false`);
+  ok(t6, "Esc退出打字模式并还原渲染");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
   const openWild = async (buildExpr, title, msg) => {
     await evalJs(`openBookFile(${buildExpr})`);

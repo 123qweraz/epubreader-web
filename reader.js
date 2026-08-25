@@ -84,9 +84,11 @@ const state = {
   fontFamily: localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif",
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
   /* 外挂注音是会话级功能: 不读持久化状态, 每次启动默认关(高级功能分页可再开)
-     annotate: 注音模式 off/pinyin/romaji(日语罗马音); showPinyin 为派生活动布尔供旧链路使用 */
+     annotate: 注音模式 off/pinyin/pinyinOnly/romaji(日语罗马音); showPinyin 为派生活动布尔供旧链路使用 */
   showPinyin: false,
   annotate: "off",
+  /* 打字模式: 会话级, 照书打字驱动阅读(typing.js) */
+  typing: false,
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -1385,6 +1387,11 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
       if ($("bookFrame").contentDocument === doc) pyDispatch(doc);
     }).catch(() => {});
   }
+  /* 打字模式: 新章节渲染完成后接管(整书模式下同一文档只激活一次) */
+  if (state.typing && !doc.__twBound) {
+    doc.__twBound = true;
+    twActivate(doc);
+  }
   autoJumping = false;
   clearTimeout(autoJumpTimer);
   autoChapterStart = performance.now();
@@ -1698,6 +1705,12 @@ function handleKey(e) {
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) {
     if (e.key === "Escape") { el.blur?.(); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
     return;
+  }
+  /* 打字模式优先消费字母键(照书打字); Esc退出, Tab跳过当前词; 其余键落入常规快捷键 */
+  if (state.typing) {
+    if (e.key === "Escape") { setTyping(false); return; }
+    if (e.key === "Tab") { e.preventDefault(); twSkip(); return; }
+    if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); twFeed(e.key.toLowerCase()); return; }
   }
   const paged = state.readMode === "paged";
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); paged ? flipPage(1) : nextPage(); }
@@ -2220,6 +2233,34 @@ $("annotateSeg").addEventListener("click", e => {
   const btn = e.target.closest("[data-ann]");
   if (btn) setAnnotate(btn.dataset.ann, btn);
 });
+
+/* ---- 打字模式开关 ---- */
+function syncTypingBtn() {
+  const b = $("typingBtn");
+  b.classList.toggle("active", state.typing);
+  b.setAttribute("aria-pressed", String(state.typing));
+}
+function setTyping(on) {
+  if (!state.book) return;
+  if (on === state.typing) return;
+  if (on) {
+    if (state.vertical) { toast(t("twNoVert")); return; }
+    state.typing = true;
+    syncTypingBtn();
+    /* 中文token构建需拼音词典; 加载失败降级仍可打英/日(空expect词Tab可跳) */
+    ensurePinyinLib().catch(() => {}).then(() => {
+      if (!state.typing) return;
+      if (state.readMode !== "scroll") { setReadMode("scroll"); return; }   /* 重渲染后runAfterLoad接管 */
+      twActivate($("bookFrame").contentDocument);
+    });
+  } else {
+    state.typing = false;
+    twReset();
+    syncTypingBtn();
+    rerenderReader();
+  }
+}
+$("typingBtn").onclick = () => setTyping(!state.typing);
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
   key: "fontSize", min: 10, max: 36,
