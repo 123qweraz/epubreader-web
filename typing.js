@@ -116,6 +116,47 @@ function twWrapBlock(doc, block, jaCtx) {
   return out;
 }
 
+/* 拾取态: 点击正文某段开始打字; 悬停提示可选块 */
+const TW_PICK_CSS = `
+  ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}`).join(",")} { cursor: pointer; }
+  ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}:hover`).join(",")} { background: rgba(128,128,128,.18); }
+  .twDim { opacity: .2; }
+  .twDim, .spinePart, ${TW_BLOCK_SEL.split(",").join(",")} { transition: opacity .3s ease; }
+`;
+function twFindBlock(doc, target) {
+  return twState?.blocks.find(b => b.contains(target)) || null;
+}
+function twEnterPick(doc) {
+  twReset();
+  twActive = true;
+  twState = { doc, phase: "pick", allBlocks: twCollectBlocks(doc), blocks: [], bi: 0, tokens: [], idx: 0 };
+  if (!doc.getElementById("twPickStyle")) {
+    const st = doc.createElement("style");
+    st.id = "twPickStyle";
+    st.textContent = TW_PICK_CSS;
+    doc.head.appendChild(st);
+  }
+  doc.body.classList.add("twPicking");
+  doc.__twPickHandler = e => {
+    const hit = twFindBlock(doc, e.target) || twState.allBlocks.find(b => b === e.target.closest(TW_BLOCK_SEL));
+    if (hit) twStartAt(hit);
+  };
+  doc.addEventListener("click", doc.__twPickHandler);
+}
+/* 从选中段开始: 其后段落组成推进链, 全书其余内容压暗(聚光灯); 选中段居中 */
+function twStartAt(el) {
+  const st = twState;
+  if (!st || !el) return;
+  const doc = st.doc;
+  if (doc.__twPickHandler) { doc.removeEventListener("click", doc.__twPickHandler); doc.__twPickHandler = null; }
+  doc.body.classList.remove("twPicking");
+  doc.body.classList.add("twSpot");
+  const idx = st.allBlocks.indexOf(el);
+  st.blocks = st.allBlocks.slice(Math.max(0, idx));
+  st.bi = 0;
+  twLoadBlock(true);
+}
+
 /* 视口锚定: 当前token过高/过低时平滑滚到中部阅读带 */
 function twAnchor(el) {
   const frame = $("bookFrame");
@@ -126,7 +167,13 @@ function twAnchor(el) {
   if (r.top > vh * 0.62 || r.top < vh * 0.22) win.scrollBy({ top: r.top - vh * 0.42, behavior: REDUCED_MOTION ? "instant" : "smooth" });
 }
 
-function twLoadBlock() {
+function twApplySpotlight(activeEl) {
+  const st = twState;
+  if (!st) return;
+  for (const b of st.allBlocks) b.classList.toggle("twDim", b !== activeEl && st.blocks.includes(b));
+}
+
+function twLoadBlock(centerFirst) {
   const st = twState;
   while (st.bi < st.blocks.length) {
     const b = st.blocks[st.bi++];
@@ -134,8 +181,10 @@ function twLoadBlock() {
     if (toks.length) {
       st.tokens = toks;
       st.idx = 0;
+      twApplySpotlight(b);
       toks[0].el.classList.add("twCur");
-      twAnchor(toks[0].el);
+      if (centerFirst) b.scrollIntoView({ behavior: REDUCED_MOTION ? "instant" : "smooth", block: "center" });
+      else twAnchor(toks[0].el);
       return;
     }
   }
@@ -180,13 +229,13 @@ function twSkip() {
   else twLoadBlock();
 }
 
-function twActivate(doc) {
-  twReset();
-  twActive = true;
-  twState = { doc, blocks: twCollectBlocks(doc), bi: 0, tokens: [], idx: 0 };
-  twLoadBlock();
-}
 function twReset() {
+  const doc = twState?.doc;
+  if (doc) {
+    if (doc.__twPickHandler) { doc.removeEventListener("click", doc.__twPickHandler); doc.__twPickHandler = null; }
+    doc.body?.classList.remove("twPicking", "twSpot");
+    doc.querySelectorAll?.(".twDim").forEach(el => el.classList.remove("twDim"));
+  }
   twActive = false;
   twState = null;   /* span烙在DOM里, 关闭/换章由重渲染自然带走(与注音同策略) */
 }

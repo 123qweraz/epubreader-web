@@ -1387,10 +1387,10 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
       if ($("bookFrame").contentDocument === doc) pyDispatch(doc);
     }).catch(() => {});
   }
-  /* 打字模式: 新章节渲染完成后接管(整书模式下同一文档只激活一次) */
+  /* 打字模式: 新章节渲染完成后进入拾取态(点选段落开始) */
   if (state.typing && !doc.__twBound) {
     doc.__twBound = true;
-    twActivate(doc);
+    twEnterPick(doc);
   }
   autoJumping = false;
   clearTimeout(autoJumpTimer);
@@ -2247,11 +2247,15 @@ function setTyping(on) {
     if (state.vertical) { toast(t("twNoVert")); return; }
     state.typing = true;
     syncTypingBtn();
-    /* 中文token构建需拼音词典; 加载失败降级仍可打英/日(空expect词Tab可跳) */
+    /* 焦点修复: 按钮点击后焦点留在BUTTON, 后续字母键会被输入守卫拦截(打字没反应的根因) */
+    $("typingBtn").blur();
+    $("bookFrame").contentWindow?.focus();
+    toast(t("twPickHint"));
     ensurePinyinLib().catch(() => {}).then(() => {
       if (!state.typing) return;
-      if (state.readMode !== "scroll") { setReadMode("scroll"); return; }   /* 重渲染后runAfterLoad接管 */
-      twActivate($("bookFrame").contentDocument);
+      const doc = $("bookFrame").contentDocument;
+      if (state.readMode !== "scroll" || !doc?.body) { setReadMode("scroll"); return; }   /* 重渲染后runAfterLoad接管 */
+      twEnterPick(doc);
     });
   } else {
     state.typing = false;

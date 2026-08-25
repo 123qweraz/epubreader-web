@@ -383,12 +383,27 @@ window.__rawEpub = (title, o = {}) => {
     const d = document.getElementById("bookFrame").contentDocument;
     return {
       btnActive: document.getElementById("typingBtn").classList.contains("active"),
-      n: d.querySelectorAll(".twTok").length,
-      cur: d.querySelector(".twTok.twCur")?.textContent,
-      expects: [...d.querySelectorAll(".twTok")].map(s => s.textContent)
+      picking: d.body.classList.contains("twPicking"),
+      n: d.querySelectorAll(".twTok").length
     };
   })()`);
-  ok(t0.btnActive && t0.n === 4 && t0.cur === "The", `打字模式激活(首块${t0.n}token惰性包裹, 当前=${t0.cur})`);
+  ok(t0.btnActive && t0.picking && t0.n === 0, `打字模式进入拾取态(待点选, token=${t0.n})`);
+  /* 点选第一段 → 聚光灯(其余压暗) + 居中开始 */
+  await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    d.querySelector("p").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  })()`);
+  await sleep(400);
+  const t0b = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return {
+      spot: d.body.classList.contains("twSpot"),
+      dimmed: d.querySelectorAll(".twDim").length,
+      n: d.querySelectorAll(".twTok").length,
+      cur: d.querySelector(".twTok.twCur")?.textContent
+    };
+  })()`);
+  ok(t0b.spot && t0b.dimmed >= 2 && t0b.n === 4 && t0b.cur === "The", `点选段激活(${t0b.n}token, 当前=${t0b.cur}, 压暗${t0b.dimmed}块)`);
   /* 英文大小写不敏感键入 */
   for (const k of ["T", "H", "E"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
   const t1 = await evalJs(`(() => {
