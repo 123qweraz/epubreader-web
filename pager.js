@@ -64,6 +64,13 @@ let pagedCtx = null;
 
 function pagedActive() { return state.readMode === "paged" && !!pagedCtx; }
 
+/* 行高整取: 栏高=行高的整数倍, 避免分栏边界切开字形(页首尾半行) */
+function pagedSnapHeight(win, flow) {
+  const lh = Math.max(8, state.fontSize * state.lineHeight);
+  const avail = (state.vertical ? (win.innerHeight || 0) : ((win.innerHeight || 0) || flow.clientHeight || 0)) - 80;
+  return Math.max(lh, Math.floor(Math.max(avail, lh) / lh) * lh);
+}
+
 function measurePaged() {
   if (!pagedCtx) return;
   const { flow } = pagedCtx;
@@ -71,16 +78,20 @@ function measurePaged() {
   pagedCtx.w = w;
   pagedCtx.stride = w + PG_GAP;
   pagedCtx.vertical = !!state.vertical;
-  flow.style.columnWidth = `${w}px`;
+  const win = pagedCtx.doc.defaultView;
+  flow.style.height = `${pagedSnapHeight(win, flow)}px`;
   if (pagedCtx.vertical) {
-    /* 竖排 vertical-rl: 列条带纵向填满, 沿块轴(物理X)向左堆叠 → scrollWidth=全书总宽;
-       一页窗口 = 视口宽减body左右padding(48*2), 步进与横排同构 */
-    const win = pagedCtx.doc.defaultView;
+    /* 竖排: 零间隙 + 条带宽=一页可视宽(innerWidth-左右padding), 页面切缝精确落在
+       竖行之间(条带由浏览器按整行断开), 滚动步长=条带周期 → 不切半行 */
     const visW = Math.max(200, ((win ? win.innerWidth : 0) || flow.clientWidth || 600) - PG_PADX * 2);
-    pagedCtx.vStride = visW + PG_GAP;
+    flow.style.columnWidth = `${visW}px`;
+    flow.style.columnGap = "0px";
+    pagedCtx.vStride = visW;
     pagedCtx.totalW = flow.scrollWidth;
-    pagedCtx.pages = Math.max(1, Math.ceil(pagedCtx.totalW / pagedCtx.vStride));
+    pagedCtx.pages = Math.max(1, Math.ceil(pagedCtx.totalW / visW));
   } else {
+    flow.style.columnWidth = `${w}px`;
+    flow.style.columnGap = `${PG_GAP}px`;
     pagedCtx.totalW = flow.scrollWidth;
     pagedCtx.pages = Math.max(1, Math.round((flow.scrollWidth + PG_GAP) / pagedCtx.stride));
   }
