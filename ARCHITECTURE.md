@@ -83,6 +83,23 @@ tests/smoke.mjs 497 行   零依赖冒烟测试(内置静态服务器驱动真 C
 | encryption.xml 字体解密（IDPF/Adobe 双混淆算法，XOR 前 1040/1024 字节） | epub 层 | 参考实现 foliate-js epub.js:568-640（MIT）；SHA-1 用 crypto.subtle（安全上下文可用） |
 | FXL 固定排版（绘本/漫画，rendition:layout=pre-paginated） | pager 层 | 整页缩放模式，视口来源回退链：SVG viewBox → viewport meta → 书级默认 → 图片自然尺寸 |
 | RTL 翻页（日漫 page-progression-direction="rtl"） | pager 层 | 现有 flipPage 符号取反即可 |
+| 竖排（writing-mode: vertical-rl） | pager 层 | ✅ spike 已验证可行(2026-08, 真 Chrome 实测)，见下方结论 |
+
+### 竖排 spike 结论（2026-08, Chrome 无头实测）
+
+1. **`vertical-rl` + CSS columns 可用**：列沿物理 X 轴向右扩展，`scrollWidth`
+   如实报告总宽 W（55216px 实测）；阅读起点在最右列，序向左推进
+2. **翻页公式**：列厚=`column-width`(块轴尺寸)，列长=元素 height(内联轴)。
+   页 k 的窗口 = 内容空间 `[W−pw−k·S, W−k·S]`(S=pw+gap)，实现为
+   `translateX(T_k)`，**T_k = k·S − (W−pw)**。实测 135 页遍历单调无空白无重叠，
+   越界页正确为空
+3. **实现要点**：pager 的 pagedCtx 增加轴向标志；竖排时 iframe 内 body 注入
+   `writing-mode:vertical-rl; height:视口高; column-width:视口宽`；总宽取
+   scrollWidth；触摸方向反转（内容随 k 右移 → 右滑=下一页）；滚轮 deltaY
+   语义不变。unit-page 映射(showUnit/getPageHeight/currentScrollRatio)、
+   滚动模式虚拟化(scrollMarks 沿 scrollLeft)、pyMarkMove 需轴感知适配
+4. **建议分期**：先做竖排×翻页模式(改动集中在 pagedCtx 数学)，滚动模式竖排
+   二期；拼音注音为 DOM 级注入不受排版方向影响
 | SVG 直接作 spine 条目 / EPUB2 封面三级回退（cover-image 属性 → meta name=cover → guide type） | epub/渲染管线 | prepareSpineBody 已有 `svg image, svg use` 选择器兜底 |
 | 拼音库懒加载 | ✅ 已完成 | ensurePinyinLib 动态注入，勿改为首屏静态引入 |
 
