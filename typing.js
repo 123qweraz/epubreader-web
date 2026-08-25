@@ -174,6 +174,7 @@ function twStartAt(el) {
   const idx = st.allBlocks.indexOf(el);
   st.blocks = st.allBlocks.slice(Math.max(0, idx));
   st.bi = 0;
+  st.phase = "typing";
   twLoadBlock(true);
   const inp = $("typingInput");   /* 点选完成即聚焦输入条, 字母直接可打 */
   if (inp) inp.focus({ preventScroll: true });
@@ -202,14 +203,20 @@ function twLoadBlock(centerFirst) {
   while (st.bi < st.blocks.length) {
     const b = st.blocks[st.bi++];
     const toks = twWrapBlock(st.doc, b, twIsJaBlock(b));
-    if (toks.length) {
-      st.tokens = toks;
+    /* 空expect的token(注音库缺失/无可读音内容)不可完成, 直接标记跳过防卡死 */
+    const usable = [];
+    for (const t of toks) {
+      if (t.expect) usable.push(t);
+      else t.el.classList.add("twGot");
+    }
+    if (usable.length) {
+      st.tokens = usable;
       st.idx = 0;
       twApplySpotlight(b);
-      toks[0].el.classList.add("twCur");
-      twPlaceCaret(toks[0]);
+      usable[0].el.classList.add("twCur");
+      twPlaceCaret(usable[0]);
       if (centerFirst) b.scrollIntoView({ behavior: REDUCED_MOTION ? "instant" : "smooth", block: "center" });
-      else twAnchor(toks[0].el);
+      else twAnchor(usable[0]);
       return;
     }
   }
@@ -255,6 +262,13 @@ function twSkip() {
   t.el.classList.remove("twCur");
   t.el.classList.add("twGot");
   twAdvance();
+}
+/* 拾取态打字提醒: 节流防连按刷屏 */
+let twNudgeAt = 0;
+function twPickNudge() {
+  if (performance.now() - twNudgeAt < 2000) return;
+  twNudgeAt = performance.now();
+  toast(t("twPickHint"));
 }
 
 function twReset() {

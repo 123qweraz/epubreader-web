@@ -1711,7 +1711,13 @@ function handleKey(e) {
     if (e.key === "Escape") { setTyping(false); return; }
     if (e.key === "Tab") { e.preventDefault(); twSkip(); return; }
     if (e.key === " ") { e.preventDefault(); return; }
-    if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); twFeed(e.key.toLowerCase()); return; }
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault();
+      /* 拾取态尚未点选段落: 提示而非静默吞掉 */
+      if (twState?.phase === "pick") { twPickNudge(); return; }
+      twFeed(e.key.toLowerCase());
+      return;
+    }
   }
   const paged = state.readMode === "paged";
   if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); paged ? flipPage(1) : nextPage(); }
@@ -2275,7 +2281,10 @@ $("typingInput").addEventListener("input", e => {
   twProcIdx = Math.min(twProcIdx, v.length);
   while (twProcIdx < v.length) {
     const ch = v[twProcIdx].toLowerCase();
-    if (/[a-z]/.test(ch)) twFeed(ch);
+    if (/[a-z]/.test(ch)) {
+      if (twState?.phase === "pick") twPickNudge();   /* 未点选段落: 提醒而非静默 */
+      else twFeed(ch);
+    }
     twProcIdx++;
   }
   if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
