@@ -1386,6 +1386,8 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
   autoJumping = false;
   clearTimeout(autoJumpTimer);
   autoChapterStart = performance.now();
+  /* 键盘事件只派发给持焦文档: 开书/翻章后主动把焦点交给iframe, 免去先点一下阅读区 */
+  try { win.focus(); } catch {}
   if (state.renderWhole) state.wholeLoaded = true;
   if (!doc.__readerBound) {
     doc.__readerBound = true;
@@ -2239,6 +2241,10 @@ document.addEventListener("click", e => {
   syncOverlayAria();
 });
 $("main").addEventListener("click", closeOverlays);
+
+/* 键盘兜底: 焦点在父页(工具栏/书架/侧栏)时按键也能驱动阅读; 焦点在iframe内则由其文档上的handleKey接管
+   (键盘事件不跨文档派发, 两处监听不会重复触发); handleKey 自带输入框守卫 */
+document.addEventListener("keydown", e => { if (state.book) handleKey(e); });
 
 /* ---------- 书架编辑模式与设置分页绑定 ---------- */
 $("editShelfBtn").onclick = () => setShelfEditMode(true);
