@@ -1706,10 +1706,11 @@ function handleKey(e) {
     if (e.key === "Escape") { el.blur?.(); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
     return;
   }
-  /* 打字模式优先消费字母键(照书打字); Esc退出, Tab跳过当前词; 其余键落入常规快捷键 */
+  /* 打字模式优先: 字母键喂入引擎(输入条未聚焦时的兜底路径); 空格禁用(避免误触翻段); Esc退出, Tab跳词 */
   if (state.typing) {
     if (e.key === "Escape") { setTyping(false); return; }
     if (e.key === "Tab") { e.preventDefault(); twSkip(); return; }
+    if (e.key === " ") { e.preventDefault(); return; }
     if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); twFeed(e.key.toLowerCase()); return; }
   }
   const paged = state.readMode === "paged";
@@ -2240,6 +2241,7 @@ function syncTypingBtn() {
   b.classList.toggle("active", state.typing);
   b.setAttribute("aria-pressed", String(state.typing));
 }
+let twProcIdx = 0;
 function setTyping(on) {
   if (!state.book) return;
   if (on === state.typing) return;
@@ -2247,9 +2249,9 @@ function setTyping(on) {
     if (state.vertical) { toast(t("twNoVert")); return; }
     state.typing = true;
     syncTypingBtn();
-    /* 焦点修复: 按钮点击后焦点留在BUTTON, 后续字母键会被输入守卫拦截(打字没反应的根因) */
-    $("typingBtn").blur();
-    $("bookFrame").contentWindow?.focus();
+    $("typingBar").hidden = false;
+    $("typingInput").value = "";
+    twProcIdx = 0;
     toast(t("twPickHint"));
     ensurePinyinLib().catch(() => {}).then(() => {
       if (!state.typing) return;
@@ -2261,10 +2263,29 @@ function setTyping(on) {
     state.typing = false;
     twReset();
     syncTypingBtn();
+    $("typingBar").hidden = true;
     rerenderReader();
   }
 }
 $("typingBtn").onclick = () => setTyping(!state.typing);
+/* 输入条喂字: 兼容直接字母与中文IME拼音组合(组合中逐字符实时喂, 提交后清空缓冲) */
+$("typingInput").addEventListener("input", e => {
+  const inp = e.target;
+  const v = inp.value;
+  twProcIdx = Math.min(twProcIdx, v.length);
+  while (twProcIdx < v.length) {
+    const ch = v[twProcIdx].toLowerCase();
+    if (/[a-z]/.test(ch)) twFeed(ch);
+    twProcIdx++;
+  }
+  if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
+});
+$("typingInput").addEventListener("keydown", e => {
+  /* 输入条内Enter/Tab/Esc统一处理, 防止落入表单默认行为 */
+  if (e.key === "Escape") { setTyping(false); e.preventDefault(); }
+  else if (e.key === "Tab") { twSkip(); e.preventDefault(); }
+  else if (e.key === "Enter") e.preventDefault();
+});
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
   key: "fontSize", min: 10, max: 36,

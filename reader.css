@@ -147,13 +147,26 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .segCtl button.active { background: var(--accent); color: var(--bg); }
 /* 纯拼音替换文本: 与正文同字号渲染, 稍降不透明度提示为音译 */
 .pyRep { opacity: .92; }
-/* 打字模式token: 当前=反色高亮, 已完成=淡出, 错误=红闪抖动(宽松不阻塞) */
-.twTok { border-radius: 2px; }
-.twTok.twCur { background: var(--accent); color: var(--bg); }
-.twTok.twGot { opacity: .38; }
-.twTok.twErr { background: #b3402f; color: #fff; animation: twShake .2s ease; }
+/* 打字模式token: 当前=灰底待打, 已打前缀亮色, 完成=淡出, 错误=红闪抖动(宽松不阻塞) */
+.twTok { border-radius: 3px; }
+.twTok .twA, .twTok .twB { background: rgba(128,128,128,.22); border-radius: 2px; padding: 0 1px; }
+.twTok.twCur .twA { color: var(--fg); font-weight: 600; }
+.twTok.twCur .twB { color: var(--muted); }
+.twTok.twGot { opacity: .32; }
+.twTok.twGot .twA, .twTok.twGot .twB { background: transparent; }
+.twTok.twErr { background: #b3402f !important; color: #fff !important; animation: twShake .2s ease; }
+.twTok.twErr .twA, .twTok.twErr .twB { color: #fff; }
 @keyframes twShake { 0%, 100% { transform: none; } 50% { transform: translateX(2px); } }
 @media (prefers-reduced-motion: reduce) { .twTok.twErr { animation: none; } }
+/* 闪烁光标: 指示当前输入位置 */
+.twCaret { display: inline-block; width: 2px; height: 1.05em; vertical-align: -.15em; margin-left: 1px; background: var(--accent); animation: twBlink 1.1s steps(1) infinite; }
+@keyframes twBlink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .twCaret { animation: none; } }
+/* 打字输入条: 可见可点击回焦, 悬浮于阅读区底部 */
+#typingBar { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; background: var(--bar); border: 1px solid var(--border); border-radius: 999px; padding: 7px 16px; box-shadow: var(--shadow-2); }
+#typingBar[hidden] { display: none; }
+#typingBar .tbHint { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+#typingInput { width: 13em; border: none; background: transparent; color: var(--fg); outline: none; font-size: var(--fs-sm); caret-color: var(--accent); }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }

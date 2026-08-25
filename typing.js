@@ -75,10 +75,30 @@ function twEmitText(doc, node, jaCtx, out) {
 const TW_LATIN_RE = /[a-zA-Z]/;
 
 function twMkToken(doc, text, expect) {
+  /* 双层结构: twA=已打亮的源字符前缀, twB=待打(灰色); 单字中文源不可拆, 靠caret+整体变色指示 */
   const el = doc.createElement("span");
   el.className = "twTok";
-  el.textContent = text;
-  return { el, expect: expect || "", got: 0 };
+  const a = doc.createElement("span");
+  a.className = "twA";
+  const b = doc.createElement("span");
+  b.className = "twB";
+  b.textContent = text;
+  el.append(a, b);
+  return { el, aEl: a, bEl: b, expect: expect || "", got: 0, src: text };
+}
+/* 闪烁光标: 指示当前输入位置 */
+let twCaret = null;
+function twPlaceCaret(tok) {
+  const doc = tok.el.ownerDocument;
+  if (twCaret?.isConnected) twCaret.remove();
+  twCaret = doc.createElement("span");
+  twCaret.className = "twCaret";
+  tok.el.after(twCaret);
+}
+/* 键入进度渲染: 源字符按got数拆分到twA(已亮)/twB(待打灰) */
+function twPaintProgress(tok) {
+  tok.aEl.textContent = tok.src.slice(0, tok.got);
+  tok.bEl.textContent = tok.src.slice(tok.got);
 }
 
 /* ruby处理: 有rt读音则整词一token(rt假名→罗马音/拉丁直接用), 无读音按语境兜底; 替换ruby为span */
@@ -155,13 +175,17 @@ function twStartAt(el) {
   st.blocks = st.allBlocks.slice(Math.max(0, idx));
   st.bi = 0;
   twLoadBlock(true);
+  const inp = $("typingInput");   /* 点选完成即聚焦输入条, 字母直接可打 */
+  if (inp) inp.focus({ preventScroll: true });
 }
 
-/* 视口锚定: 当前token过高/过低时平滑滚到中部阅读带 */
-function twAnchor(el) {
+/* 视口锚定: 当前token过高/过低时平滑滚到中部阅读带(入参token对象或元素均可) */
+function twAnchor(tok) {
   const frame = $("bookFrame");
   const win = frame.contentWindow;
   if (!win) return;
+  const el = tok?.el || tok;
+  if (!el?.getBoundingClientRect) return;
   const r = el.getBoundingClientRect();
   const vh = win.innerHeight || 600;
   if (r.top > vh * 0.62 || r.top < vh * 0.22) win.scrollBy({ top: r.top - vh * 0.42, behavior: REDUCED_MOTION ? "instant" : "smooth" });
@@ -183,6 +207,7 @@ function twLoadBlock(centerFirst) {
       st.idx = 0;
       twApplySpotlight(b);
       toks[0].el.classList.add("twCur");
+      twPlaceCaret(toks[0]);
       if (centerFirst) b.scrollIntoView({ behavior: REDUCED_MOTION ? "instant" : "smooth", block: "center" });
       else twAnchor(toks[0].el);
       return;
@@ -192,7 +217,14 @@ function twLoadBlock(centerFirst) {
   toast(t("twChapDone"));
 }
 
-/* 键入: 命中推进/完成切换; 宽松错误仅闪红 */
+/* 键入: 命中推进/完成切换(逐字母点亮); 宽松错误仅闪红 */
+function twAdvance() {
+  const st = twState;
+  st.idx++;
+  const nx = st.tokens[st.idx];
+  if (nx) { nx.el.classList.add("twCur"); twPlaceCaret(nx); twAnchor(nx); }
+  else twLoadBlock();
+}
 function twFeed(key) {
   const st = twState;
   if (!st || !st.tokens.length) return;
@@ -200,13 +232,11 @@ function twFeed(key) {
   if (!t) return;
   if (key === t.expect[t.got]) {
     t.got++;
+    twPaintProgress(t);
     if (t.got >= t.expect.length) {
       t.el.classList.remove("twCur");
       t.el.classList.add("twGot");
-      st.idx++;
-      const nx = st.tokens[st.idx];
-      if (nx) { nx.el.classList.add("twCur"); twAnchor(nx.el); }
-      else twLoadBlock();
+      twAdvance();
     }
   } else {
     t.el.classList.remove("twErr");
@@ -221,12 +251,10 @@ function twSkip() {
   const t = st.tokens[st.idx];
   if (!t) return;
   t.got = t.expect.length;
+  twPaintProgress(t);
   t.el.classList.remove("twCur");
   t.el.classList.add("twGot");
-  st.idx++;
-  const nx = st.tokens[st.idx];
-  if (nx) { nx.el.classList.add("twCur"); twAnchor(nx.el); }
-  else twLoadBlock();
+  twAdvance();
 }
 
 function twReset() {

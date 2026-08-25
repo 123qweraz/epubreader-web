@@ -400,18 +400,34 @@ window.__rawEpub = (title, o = {}) => {
       spot: d.body.classList.contains("twSpot"),
       dimmed: d.querySelectorAll(".twDim").length,
       n: d.querySelectorAll(".twTok").length,
-      cur: d.querySelector(".twTok.twCur")?.textContent
+      cur: d.querySelector(".twTok.twCur")?.textContent,
+      barShown: !document.getElementById("typingBar").hidden,
+      inputFocused: document.activeElement === document.getElementById("typingInput"),
+      caret: !!d.querySelector(".twCaret")
     };
   })()`);
   ok(t0b.spot && t0b.dimmed >= 2 && t0b.n === 4 && t0b.cur === "The", `点选段激活(${t0b.n}token, 当前=${t0b.cur}, 压暗${t0b.dimmed}块)`);
-  /* 英文大小写不敏感键入 */
-  for (const k of ["T", "H", "E"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  ok(t0b.barShown && t0b.inputFocused && t0b.caret, `输入条显示且聚焦(光标=${t0b.caret})`);
+  /* 英文大小写不敏感键入 + 逐字母点亮 */
+  for (const k of ["T", "H"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  const t1a = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const cur = d.querySelector(".twTok.twCur");
+    return { a: cur?.querySelector(".twA")?.textContent, b: cur?.querySelector(".twB")?.textContent };
+  })()`);
+  ok(t1a.a === "Th" && t1a.b === "e", `单词内逐字母点亮(已亮=${t1a.a}, 待打=${t1a.b})`);
+  for (const k of ["E"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
   const t1 = await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;
     const cur = d.querySelector(".twTok.twCur");
     return { got: d.querySelectorAll(".twTok.twGot").length, cur: cur?.textContent };
   })()`);
   ok(t1.got === 1 && t1.cur === "quick", `英文词完成推进(已完成${t1.got}, 当前=${t1.cur})`);
+  /* 空格禁用: 不翻段不推进 */
+  const beforeSpace = await evalJs(`twState.tokens[twState.idx].el.textContent`);
+  await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))`);
+  const afterSpace = await evalJs(`twState?.tokens[twState.idx]?.el.textContent`);
+  ok(beforeSpace === afterSpace, "空格在打字模式下禁用(不推进不翻段)");
   /* 宽松错误: 错键不推进仅闪红 */
   await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "z" }))`);
   const t2 = await evalJs(`(() => {
