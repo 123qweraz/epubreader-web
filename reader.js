@@ -1971,6 +1971,37 @@ pinBtn.onclick = e => {
   applySidePin();
 };
 applySidePin();
+
+/* ---- 侧边栏拖拽调宽 ---- */
+(function() {
+  const sb = $("sidebar"), handle = $("sidebarResize");
+  if (!handle) return;
+  const saved = parseInt(localStorage.getItem("sidebarWidth"), 10);
+  if (saved >= 280) sb.style.width = Math.min(saved, window.innerWidth * 0.8) + "px";
+  let dragging = false, startX = 0, startW = 0;
+  handle.onmousedown = (e) => {
+    if (e.button !== 0) return;
+    dragging = true; startX = e.clientX; startW = sb.offsetWidth;
+    handle.classList.add("active");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  };
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const w = Math.max(280, Math.min(startW + e.clientX - startX, window.innerWidth * 0.8));
+    sb.style.width = w + "px";
+  });
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove("active");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    localStorage.setItem("sidebarWidth", sb.offsetWidth);
+  });
+})();
+
 function scrollTocToCurrent() {
   const el = $("toc").querySelector(".tocItem.active");
   if (el) el.scrollIntoView({ block: "center" });
