@@ -1087,10 +1087,33 @@ async function prepareSpineBody(item, fileIdx, whole) {
   const resources = new Set([
     ...body.querySelectorAll("img[src],image[href],image[xlink\\:href],audio[src],video[src],source[src],track[src],use[href],use[xlink\\:href]"),
     ...body.querySelectorAll("[poster]"),
+    ...body.querySelectorAll("[srcset]"),
     /* XHTML按XML解析时Chrome的属性选择器匹配不到带前缀的xlink:href, 类型选择器兜底(svg image/use) */
     ...body.querySelectorAll("svg image, svg use")
   ]);
+  const resolveRes = async val => {
+    if (!val || val.startsWith("#") || /^(data:|https?:|blob:)/i.test(val)) return null;
+    return await makeResourceUrl(resolvePath(path, val)).catch(() => null);
+  };
   await Promise.all([...resources].map(async el => {
+    /* srcset: 分章模式逐候选拼blob重写; 整书懒加载模式必须摘除——浏览器优先取srcset候选,
+       相对URL裂图且会绕过data-rpath占位换源机制 */
+    if (el.hasAttribute("srcset")) {
+      if (whole) { el.removeAttribute("srcset"); }
+      else {
+        const out = [];
+        for (const cand of el.getAttribute("srcset").split(",")) {
+          const seg = cand.trim();
+          if (!seg) continue;
+          const sp = seg.search(/\s/);
+          const u = sp < 0 ? seg : seg.slice(0, sp);
+          const desc = sp < 0 ? "" : " " + seg.slice(sp + 1).trim();
+          const url = await resolveRes(u);
+          out.push((url || u) + desc);
+        }
+        el.setAttribute("srcset", out.join(", "));
+      }
+    }
     const attr = el.hasAttribute("src") ? "src" : el.hasAttribute("poster") ? "poster" : el.hasAttribute("href") ? "href" : "xlink:href";
     const val = el.getAttribute(attr);
     if (!val || val.startsWith("#") || val.startsWith("data:") || /^(https?:|blob:)/i.test(val)) return;
@@ -1184,7 +1207,15 @@ async function renderWholeBook() {
   const parts = [];
   let headCss = "";
   for (let i = 0; i < state.book.spine.length; i++) {
-    const prep = await prepareSpineBody(state.book.spine[i], i, true);
+    let prep;
+    try {
+      prep = await prepareSpineBody(state.book.spine[i], i, true);
+    } catch (err) {
+      /* 整书模式逐节隔离: 坏节渲染占位, 不拖垮全书 */
+      console.warn("整书模式章节失败", err);
+      parts.push(`<section class="spinePart" id="sp${i}"><p>${escTxt(t("chapFailTitle"))}</p></section>`);
+      continue;
+    }
     headCss += prep.headCss;
     parts.push(`<section class="spinePart" id="sp${i}">${prep.bodyHtml}</section>`);
   }
@@ -1300,9 +1331,13 @@ async function showChapter(index, fragment = "", opts = {}) {
     if (state.renderWhole) toast(t("layoutWhole"));
     src = state.renderWhole ? await renderWholeBook() : await renderChapter(state.book.spine[index]);
   } catch (err) {
+    /* 单章损坏不拒开整本: 渲染错误占位页, 章节导航/进度照常(野生书常见个别文件缺失) */
     if (gen !== renderGen) return;   /* 已被更新的渲染取代, 静默丢弃, 交给当次调用方提示 */
     console.warn("章节加载失败", err);
-    throw err;
+    const { bg, fg } = readerColors();
+    src = buildChapterDoc({ bg, fg,
+      bodyHtml: `<div class="chapFail"><h2>${escTxt(t("chapFailTitle"))}</h2><p>${escTxt(t("chapFailBody"))}</p></div>`,
+      extraCss: `.chapFail{max-width:34em;margin:16vh auto 0;text-align:center;opacity:.75;} .chapFail h2{font-size:1.25em;margin-bottom:.9em;}` });
   }
   if (gen !== renderGen) return;
   frame.srcdoc = src;

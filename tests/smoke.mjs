@@ -163,7 +163,9 @@ window.__rawEpub = (title, o = {}) => {
   if (o.container !== false)
     f.push(["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="' + (o.container || "OEBPS/content.opf") + '" media-type="application/oebps-package+xml"/></rootfiles></container>']);
   f.push([o.opfEntry || "OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>']);
-  f.push([o.chapEntry || "OEBPS/c1.xhtml", o.utf16Chapter ? enc16(chapStr) : chapStr]);
+  if (!o.noChapter)
+    f.push([o.chapEntry || "OEBPS/c1.xhtml", o.utf16Chapter ? enc16(chapStr) : chapStr]);
+  for (const e of (o.extra || [])) f.push(e);
   return window.__makeEpubFile(window.__assembleZip(f), title + ".epub");
 };
 `);
@@ -299,6 +301,43 @@ window.__rawEpub = (title, o = {}) => {
   await openWild(`window.__rawEpub("空格路径书", { container: "OEBPS/my%20book/content.opf", opfEntry: "OEBPS/my book/content.opf", chapEntry: "OEBPS/my book/c1.xhtml" })`, "空格路径书", "容错: full-path百分号编码解码后命中空格目录条目");
   await openWild(`window.__rawEpub("反斜杠书", { opfEntry: "OEBPS\\\\content.opf", chapEntry: "OEBPS\\\\c1.xhtml" })`, "反斜杠书", "容错: Windows反斜杠条目名归一化后可开");
   await openWild(`window.__rawEpub("编码书", { utf16Chapter: true })`, "编码书", "容错: UTF-16LE带BOM章节按编码探测正确渲染");
+
+  /* 单章损坏隔离: manifest 指认的章节文件缺失 → 占位页而非整本拒开 */
+  await evalJs(`openBookFile(window.__rawEpub("缺章书", { noChapter: true }))`);
+  await sleep(900);
+  ok(await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return d.body.textContent.includes(t("chapFailTitle")) && !!document.getElementById("chapterLabel").textContent;
+  })()`), "容错: 章节文件缺失渲染占位页, 书仍打开");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(250);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "缺章书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(150);
+
+  /* srcset: 分章模式重写为blob候选, 整书懒加载模式摘除(防绕过data-rpath换源) */
+  const PNG = `Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0))`;
+  await evalJs(`openBookFile(window.__rawEpub("srcset书", {
+    bodyExtra: '<p><img id="ss" src="pic.png" srcset="pic.png 1x, pic2x.png 2x"></p>',
+    extra: [["OEBPS/pic.png", ${PNG}], ["OEBPS/pic2x.png", ${PNG}]]
+  }))`);
+  await sleep(1000);
+  const ss = await evalJs(`(async () => {
+    const chap = await prepareSpineBody(state.book.spine[0], 0, false);
+    const whole = await prepareSpineBody(state.book.spine[0], 0, true);
+    const chapDoc = new DOMParser().parseFromString(chap.bodyHtml, "text/html");
+    const wholeImg = new DOMParser().parseFromString(whole.bodyHtml, "text/html").querySelector("img");
+    return {
+      chapBlob: (chapDoc.getElementById("ss").getAttribute("srcset").match(/blob:/g) || []).length === 2,
+      chapNoRel: !chapDoc.getElementById("ss").getAttribute("srcset").includes("pic"),
+      wholeDropped: wholeImg.hasAttribute("data-rpath") && !wholeImg.hasAttribute("srcset")
+    };
+  })()`);
+  ok(ss.chapBlob && ss.chapNoRel, "srcset分章模式: 两候选均重写为blob URL");
+  ok(ss.wholeDropped, "srcset整书模式: 已摘除并保留data-rpath懒加载标记");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(250);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "srcset书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(150);
 
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
