@@ -38,7 +38,9 @@ class ZipReader {
       const nameLen = this.u16(p + 28), extraLen = this.u16(p + 30), commentLen = this.u16(p + 32);
       const localOffset = this.u32(p + 42);
       const name = this.decodeName(this.bytes(p + 46, nameLen), (flags & 0x800) !== 0);
-      this.entries.set(name, { flags, method, crc, compressed, uncompressed, localOffset });
+      /* 条目名归一化: Windows 工具产出的反斜杠分隔与 ./ /xx/../ 冗余段在此统一,
+         后续 href 解析(resolvePath 同规则)即可直接命中条目 */
+      this.entries.set(normalize(name), { flags, method, crc, compressed, uncompressed, localOffset });
       p += 46 + nameLen + extraLen + commentLen;
     }
   }
@@ -60,6 +62,8 @@ class ZipReader {
     if (ent.crc && crc32(out) !== ent.crc) throw new Error(t("crcFail", name));
     return out.buffer;
   }
+  /* 文本资源统一入口: BOM 探测(utf-16)→严格utf-8→gbk 回退, 覆盖中文工具产出的各类编码 */
+  async readText(name) { return decodeTextFile(await this.read(name)); }
 }
 
 function normalize(path) {
@@ -133,13 +137,27 @@ function parseTxtChapters(text) {
 }
 
 /* ---------- EPUB 结构解析 ---------- */
-/* container→OPF→manifest/spine/标题/NCX/封面候选; 返回 null 表示缺 rootfile(由调用方抛 noOpf) */
+/* container→OPF→manifest/spine/标题/NCX/封面候选; 返回 null 表示缺 rootfile(由调用方抛 noOpf)
+   容错: 容器缺失/损坏/full-path 指向不存在时回退扫描 *.opf(野生书高频故障), 候选按文件名优先级+路径深度排序逐个试解 */
 async function parseEpub(zip) {
-  const container = new TextDecoder().decode(await zip.read("META-INF/container.xml"));
-  const rootfile = first(xmlDoc(container), "rootfile");
-  if (!rootfile) return null;
-  const opfPath = normalize(rootfile.getAttribute("full-path"));
-  const opf = xmlDoc(new TextDecoder().decode(await zip.read(opfPath)));
+  let opfPath = "";
+  try {
+    const rootfile = first(xmlDoc(await zip.readText("META-INF/container.xml")), "rootfile");
+    const fp = rootfile?.getAttribute("full-path");
+    /* full-path 是 IRI: 百分号编码必须先解码才能匹配 ZIP 条目名字面量(空格目录等) */
+    if (fp) opfPath = normalize(safeDecode(fp));
+  } catch {}
+  if (!opfPath || !zip.entries.has(opfPath)) {
+    const score = n => ((/content\.opf$/i.test(n) ? 0 : /package\.opf$/i.test(n) ? 1 : 2) * 10000 + n.split("/").length);
+    for (const c of [...zip.entries.keys()].filter(n => /\.opf$/i.test(n)).sort((a, b) => score(a) - score(b))) {
+      try {
+        const od = xmlDoc(await zip.readText(c));
+        if (first(od, "item") && first(od, "itemref")) { opfPath = c; break; }
+      } catch {}
+    }
+    if (!opfPath) return null;
+  }
+  const opf = xmlDoc(await zip.readText(opfPath));
   const manifest = new Map();
   for (const item of all(opf, "item")) {
     manifest.set(item.getAttribute("id"), {
@@ -214,7 +232,7 @@ async function buildToc(zip, opfPath, opf, manifest, spine) {
   if (navItem) {
     try {
       const navPath = resolvePath(opfPath, navItem.href);
-      const html = new TextDecoder().decode(await zip.read(navPath));
+      const html = await zip.readText(navPath);
       const doc = parseHtmlDoc(html);
       const nav = [...doc.querySelectorAll("nav")].find(n => /toc/i.test(n.getAttribute("epub:type") || n.getAttribute("role") || "")) || doc.querySelector("nav");
       if (nav) {
@@ -233,7 +251,7 @@ async function buildToc(zip, opfPath, opf, manifest, spine) {
   if (ncxItem) {
     try {
       const ncxPath = resolvePath(opfPath, ncxItem.href);
-      const xml = new TextDecoder().decode(await zip.read(ncxPath));
+      const xml = await zip.readText(ncxPath);
       const doc = xmlDoc(xml);
       const found = [];
       collectNavPoints([...doc.querySelectorAll("navPoint")].filter(p => !p.parentElement?.closest("navPoint")), 0, found);
@@ -249,7 +267,7 @@ async function buildToc(zip, opfPath, opf, manifest, spine) {
     let label = chapterTitle(spine[i], i);
     try {
       const path = resolvePath(opfPath, spine[i].href);
-      const html = new TextDecoder().decode(await zip.read(path));
+      const html = await zip.readText(path);
       const doc = parseHtmlDoc(html);
       label = textOf(doc.querySelector("h1,h2,h3,title")) || label;
     } catch {}

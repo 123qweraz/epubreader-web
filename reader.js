@@ -706,7 +706,7 @@ async function chapterText(i) {
   } else {
     try {
       const path = resolvePath(state.opfPath, book.spine[i].href);
-      const html = new TextDecoder().decode(await state.zip.read(path));
+      const html = await state.zip.readText(path);
       const doc = parseHtmlDoc(html);
       sanitizeDoc(doc);
       doc.querySelectorAll("style,template").forEach(el => el.remove());
@@ -1066,7 +1066,7 @@ async function rewriteCss(cssText, basePath, depth = 0) {
     const r = await resolveRef(ref);
     if (!r) return m;
     try {
-      const inner = new TextDecoder().decode(await state.zip.read(r.path));
+      const inner = await state.zip.readText(r.path);
       return await rewriteCss(inner, r.path, depth + 1);
     } catch { return m; }
   });
@@ -1079,7 +1079,7 @@ async function rewriteCss(cssText, basePath, depth = 0) {
 
 async function prepareSpineBody(item, fileIdx, whole) {
   const path = resolvePath(state.opfPath, item.href);
-  const html = new TextDecoder().decode(await state.zip.read(path));
+  const html = await state.zip.readText(path);
   const doc = parseHtmlDoc(html);
   sanitizeDoc(doc);
   const body = doc.body || doc.documentElement;
@@ -1119,7 +1119,7 @@ async function prepareSpineBody(item, fileIdx, whole) {
         const key = `css:${cssPath}`;
         let url = state.urls.get(key);
         if (!url) {
-          const cssText = new TextDecoder().decode(await state.zip.read(cssPath));
+          const cssText = await state.zip.readText(cssPath);
           url = URL.createObjectURL(new Blob([await rewriteCss(cssText, cssPath)], { type: "text/css" }));
           state.urls.set(key, url);
         }

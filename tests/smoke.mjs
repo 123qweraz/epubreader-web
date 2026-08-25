@@ -100,24 +100,13 @@ try {
 window.alert = m => console.warn("[alert-suppressed]", String(m).slice(0, 120));
 window.confirm = () => false;
 window.prompt = () => null;
-window.__buildEpub = (title, padTo = 0, opts = {}) => {
-  /* 填充必须放进 ZIP 条目内容内部: 尾部补零会把 EOCD 推出解析器 64K 扫描窗; 两遍构造精确到指定字节 */
+/* 通用 ZIP 构造器(store 直存), 供边缘结构用例自由拼装 */
+window.__assembleZip = files => {
   const enc = new TextEncoder();
-  /* 1x1 红色PNG, 作为EPUB封面走 properties=cover-image 提取链路 */
-  const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
-  const rubyPara = opts.ruby ? '<p>注音前后文本<ruby>漢字<rt>hàn zì</rt></ruby>注音后文本</p>' : "";
-  const mk = padChars => {
-  const files = [
-    ["mimetype", "application/epub+zip"],
-    ["META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
-    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="uid">urn:uuid:' + title + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover-img" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="c1"/></spine></package>'],
-    ["OEBPS/nav.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">第一章 测试章</a></li></ol></nav></body></html>'],
-    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1>' + rubyPara + '<p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>'],
-    ["OEBPS/cover.png", png]
-  ].map(([n, s]) => [n, typeof s === "string" ? enc.encode(s) : s]);
+  const norm = files.map(([n, s]) => [n, typeof s === "string" ? enc.encode(s) : s]);
   const chunks = [], centrals = [];
   let offset = 0;
-  for (const [name, data] of files) {
+  for (const [name, data] of norm) {
     const nameB = enc.encode(name);
     const crc = crc32(data);
     const lh = new DataView(new ArrayBuffer(30));
@@ -138,7 +127,7 @@ window.__buildEpub = (title, padTo = 0, opts = {}) => {
   let cdSize = 0;
   for (const c of centrals) cdSize += c.length;
   const eocd = new DataView(new ArrayBuffer(22));
-  eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, files.length, true); eocd.setUint16(10, files.length, true);
+  eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, norm.length, true); eocd.setUint16(10, norm.length, true);
   eocd.setUint32(12, cdSize, true); eocd.setUint32(16, offset, true);
   const parts = [...chunks, ...centrals, new Uint8Array(eocd.buffer)];
   const total = parts.reduce((s, p) => s + p.length, 0);
@@ -146,11 +135,36 @@ window.__buildEpub = (title, padTo = 0, opts = {}) => {
   let pos = 0;
   for (const p of parts) { buf.set(p, pos); pos += p.length; }
   return buf;
-  };
+};
+window.__makeEpubFile = (buf, name) => new File([buf], /\.epub$/i.test(name) ? name : name + ".epub", { type: "application/epub+zip" });
+window.__buildEpub = (title, padTo = 0, opts = {}) => {
+  /* 填充必须放进 ZIP 条目内容内部: 尾部补零会把 EOCD 推出解析器 64K 扫描窗; 两遍构造精确到指定字节 */
+  /* 1x1 红色PNG, 作为EPUB封面走 properties=cover-image 提取链路 */
+  const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
+  const rubyPara = opts.ruby ? '<p>注音前后文本<ruby>漢字<rt>hàn zì</rt></ruby>注音后文本</p>' : "";
+  const mk = padChars => window.__assembleZip([
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="uid">urn:uuid:' + title + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover-img" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+    ["OEBPS/nav.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">第一章 测试章</a></li></ol></nav></body></html>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1>' + rubyPara + '<p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>'],
+    ["OEBPS/cover.png", png]
+  ]);
   let buf = mk(0);
   if (padTo > buf.length) buf = mk(padTo - buf.length);
   if (padTo && buf.length !== padTo) throw new Error("padding mismatch: " + buf.length);
-  return new File([buf], title + ".epub", { type: "application/epub+zip" });
+  return window.__makeEpubFile(buf, title + ".epub");
+};
+/* 野生书构造器: 可指定 container 缺失/full-path、条目名反斜杠、章节字节编码等病态结构 */
+window.__rawEpub = (title, o = {}) => {
+  const chapStr = '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="hd">野' + title + '标题</h1><p>' + "正文内容用于滚动。".repeat(40) + "</p>" + (o.bodyExtra || "") + "</body></html>";
+  const enc16 = s => { const b = [255, 254]; for (const ch of s) { const c = ch.codePointAt(0); b.push(c & 255, c >> 8 & 255); } return new Uint8Array(b); };
+  const f = [];
+  if (o.container !== false)
+    f.push(["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="' + (o.container || "OEBPS/content.opf") + '" media-type="application/oebps-package+xml"/></rootfiles></container>']);
+  f.push([o.opfEntry || "OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>']);
+  f.push([o.chapEntry || "OEBPS/c1.xhtml", o.utf16Chapter ? enc16(chapStr) : chapStr]);
+  return window.__makeEpubFile(window.__assembleZip(f), title + ".epub");
 };
 `);
 
@@ -269,6 +283,23 @@ window.__buildEpub = (title, padTo = 0, opts = {}) => {
   await sleep(300);
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "注音测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
+
+  /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
+  const openWild = async (buildExpr, title, msg) => {
+    await evalJs(`openBookFile(${buildExpr})`);
+    await sleep(900);
+    const seen = await evalJs(`document.getElementById("bookFrame").contentDocument.body.textContent.includes("野${title}标题")`);
+    ok(seen, msg);
+    await evalJs(`document.getElementById("closeBookBtn").click()`);
+    await sleep(250);
+    await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === ${JSON.stringify(title)}) await purgeBook(m.id); renderShelf(); })()`);
+    await sleep(150);
+  };
+  await openWild(`window.__rawEpub("无容器书", { container: false })`, "无容器书", "容错: 无container.xml回退扫描*.opf成功打开");
+  await openWild(`window.__rawEpub("空格路径书", { container: "OEBPS/my%20book/content.opf", opfEntry: "OEBPS/my book/content.opf", chapEntry: "OEBPS/my book/c1.xhtml" })`, "空格路径书", "容错: full-path百分号编码解码后命中空格目录条目");
+  await openWild(`window.__rawEpub("反斜杠书", { opfEntry: "OEBPS\\\\content.opf", chapEntry: "OEBPS\\\\c1.xhtml" })`, "反斜杠书", "容错: Windows反斜杠条目名归一化后可开");
+  await openWild(`window.__rawEpub("编码书", { utf16Chapter: true })`, "编码书", "容错: UTF-16LE带BOM章节按编码探测正确渲染");
+
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */
