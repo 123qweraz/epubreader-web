@@ -364,8 +364,6 @@ function restorePrefsFromStorage() {
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
   syncSettingsPinned();
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
-  /* 竖排阅读(仅翻页模式): 传统右起左行, 开启时若在滚动模式会被自动切到翻页 */
-  state.vertical = localStorage.getItem("vertical") === "1";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
   syncViewChips();
 }
@@ -1234,11 +1232,13 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
   const paged = state.readMode === "paged";
   const inner = paged ? `<div class="pgflow">${bodyHtml}</div>` : bodyHtml;
   const pagedStyle = paged ? pagedCss(pagedPageWidth()) : "";
-  /* 竖排一期(仅翻页模式): 右起左行; column-width=视口高度, 列沿X轴扩展需column-fill:balance */
+  /* 竖排一期: 右起左行; pagedCss 的 height:100% 保留(多列分页依赖), 仅叠加 writing-mode;
+     滚动模式(foliate-js 方案): 竖排下 width=块轴(列数), height=行内轴(列长);
+     html,body 尺寸归零解除约束; body max-height 锁定行内轴为一屏; body>* max-width:none 放开块轴让内容自然扩展; overflow-x:auto 启用列间水平滚动 */
   const vertStyle = state.vertical
     ? (paged
-        ? `body{writing-mode:vertical-rl;height:auto;} .pgflow{height:auto;column-fill:balance;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}`
-        : `body{writing-mode:vertical-rl;overflow-x:auto;} img,svg,video{max-width:calc(100vh - 80px);max-height:calc(100vw - 80px);}`)
+        ? `body{writing-mode:vertical-rl;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}`
+        : `html,body{height:auto;width:auto;min-height:0;} body{writing-mode:vertical-rl;max-height:100vh;overflow-x:auto;overflow-y:hidden;padding:48px 0;} body>*{max-width:none;} img,svg,video{max-width:calc(100vh - 80px);max-height:calc(100vw - 80px);}`)
     : "";
   /* 书籍字体优先: 字体栈注入在书籍样式之前, 书籍任何字体声明(含@font-face内嵌)自然覆盖;
      强制模式: 注入回书籍样式之后并加!important做正文级替换(保留书籍标题专用字体与图标字体) */
@@ -1418,25 +1418,25 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
   pagedCtx = null;
   $("pageInfo").hidden = true;
   if (opts.restoreRatio) {
-    const max = doc.documentElement.scrollHeight - win.innerHeight;
-    win.scrollTo(0, max > 0 ? Math.round(ratio * max) : 0);
+    const max = scrollMax(win);
+    scrollToPos(win, max > 0 ? Math.round(ratio * max) : 0);
   } else if (fragment) {
     const target = anchorElement(doc, state.chapterIndex, fragment);
     if (target) target.scrollIntoView({block:"start"});
-    else win.scrollTo(0, 0);
+    else scrollToPos(win, 0);
   } else if (opts.highlightTerm) {
     const mark = highlightSearchHit(doc, state.chapterIndex, opts);
     if (mark) mark.scrollIntoView({block:"center"});
-    else win.scrollTo(0, 0);
+    else scrollToPos(win, 0);
   } else if (opts.initialRatio != null) {
-    const max = doc.documentElement.scrollHeight - win.innerHeight;
-    win.scrollTo(0, max > 0 ? Math.round(ratio * max) : 0);
+    const max = scrollMax(win);
+    scrollToPos(win, max > 0 ? Math.round(ratio * max) : 0);
   } else if (state.renderWhole) {
     const sec = anchorElement(doc, state.chapterIndex, "");
     if (sec) sec.scrollIntoView({block:"start"});
-    else win.scrollTo(0, 0);
+    else scrollToPos(win, 0);
   } else {
-    win.scrollTo(0, 0);
+    scrollToPos(win, 0);
   }
   if (state.renderWhole) installLazyResources(win, doc);
   buildScrollMarks(doc);
@@ -1544,7 +1544,9 @@ function closeOverlays() {
 }
 
 function getPageHeight() {
-  return Math.max(1, $("bookFrame").clientHeight - 96);
+  const frame = $("bookFrame");
+  /* 竖排: 一屏的块轴尺寸是物理宽度(列间滚动方向); 横排: 物理高度 */
+  return Math.max(1, (state.vertical ? frame.clientWidth : frame.clientHeight) - 96);
 }
 
 function updateProgress() {
@@ -1606,7 +1608,11 @@ function jumpToUnit(to) {
   updateToc();
   const el = doc && anchorElement(doc, unit.i, unit.frag);
   if (el) el.scrollIntoView({behavior:"instant", block:"start"});
-  else if (doc && frame.contentWindow) frame.contentWindow.scrollTo(0, to > from ? doc.documentElement.scrollHeight : 0);
+  else if (doc && frame.contentWindow) {
+    const win = frame.contentWindow;
+    const end = to > from ? scrollMax(win) : 0;
+    scrollToPos(win, end);
+  }
 }
 function nextChapter() {
   if (!state.book) return;
@@ -1639,9 +1645,15 @@ function autoTick(ts) {
         flipPage(1);
       }
     } else if (win?.document && !autoJumping) {
-      win.scrollBy({top: state.speed * 15 * dt, behavior:"instant"});
+      /* 竖排: 自动滚动沿块轴(物理水平); 横排: 沿块轴(物理垂直) */
+      const autoDelta = state.speed * 15 * dt;
+      if (state.vertical) win.scrollBy({ left: autoDelta, behavior: "instant" });
+      else win.scrollBy({ top: autoDelta, behavior: "instant" });
       const docEl = win.document.documentElement;
-      if (win.scrollY + win.innerHeight >= docEl.scrollHeight - 2 && !autoJumping
+      const atEnd = state.vertical
+        ? (win.scrollX || 0) + (win.innerWidth || 0) >= (docEl.scrollWidth || 0) - 2
+        : (win.scrollY || 0) + (win.innerHeight || 0) >= (docEl.scrollHeight || 0) - 2;
+      if (atEnd && !autoJumping
           && performance.now() - autoChapterStart >= 1500) {
         if (state.renderWhole) { setAuto(false); return; }
         if (state.chapterIndex < state.book.spine.length - 1) {
@@ -2086,7 +2098,7 @@ $("verticalToggle").onchange = e => {
   state.vertical = e.target.checked;
   localStorage.setItem("vertical", state.vertical ? "1" : "0");
   if (!state.book) return;
-  /* 竖排一期仅翻页模式: 滚动模式下开启 → 自动切翻页(setReadMode内部触发重渲染) */
+  /* 竖排开启且当前为滚动模式 → 自动切翻页(滚动竖排尚未完善) */
   if (state.vertical && state.readMode !== "paged") setReadMode("paged");
   else rerenderReader();
 };
