@@ -24,7 +24,8 @@ function pagedCss(w) {
   `;
 }
 
-/* 竖排滚动轴适配: vertical-rl 块轴=物理水平, 滚动/偏移量/尺寸全部切换 scrollLeft/scrollWidth/offsetLeft */
+/* 竖排滚动轴适配: vertical-rl 块轴=物理水平, 滚动/偏移量/尺寸全部切换 scrollLeft/scrollWidth/offsetLeft;
+   Chrome 对 RTL 系轴的 scrollX 取值范围是 [-max..0](0=内容起点), 统一归一为 [0..max] 正向=阅读方向 */
 function scrollMax(win) {
   if (!win) return 0;
   const docEl = win.document?.documentElement;
@@ -34,14 +35,14 @@ function scrollMax(win) {
     : Math.max(0, (docEl.scrollHeight || 0) - (win.innerHeight || 0));
 }
 function scrollPos(win) {
-  return state.vertical ? (win.scrollX || 0) : (win.scrollY || 0);
+  return state.vertical ? -(win.scrollX || 0) : (win.scrollY || 0);
 }
 function scrollToPos(win, pos) {
-  if (state.vertical) win.scrollTo(pos, 0);
+  if (state.vertical) win.scrollTo(-pos, 0);
   else win.scrollTo(0, pos);
 }
 function scrollByDelta(win, delta) {
-  if (state.vertical) win.scrollBy(delta, 0);
+  if (state.vertical) win.scrollBy(-delta, 0);
   else win.scrollBy(0, delta);
 }
 function absDocOffset(el) {
@@ -72,10 +73,13 @@ function measurePaged() {
   pagedCtx.vertical = !!state.vertical;
   flow.style.columnWidth = `${w}px`;
   if (pagedCtx.vertical) {
-    /* 竖排 vertical-rl: CSS columns 沿 inline 轴(纵向)堆叠, scrollHeight = 全列总高 */
+    /* 竖排 vertical-rl: 列条带纵向填满, 沿块轴(物理X)向左堆叠 → scrollWidth=全书总宽;
+       一页窗口 = 视口宽减body左右padding(48*2), 步进与横排同构 */
     const win = pagedCtx.doc.defaultView;
-    pagedCtx.clientHeight = (win ? win.innerHeight : 0) || flow.clientHeight || 600;
-    pagedCtx.pages = Math.max(1, Math.ceil(flow.scrollHeight / pagedCtx.clientHeight));
+    const visW = Math.max(200, ((win ? win.innerWidth : 0) || flow.clientWidth || 600) - PG_PADX * 2);
+    pagedCtx.vStride = visW + PG_GAP;
+    pagedCtx.totalW = flow.scrollWidth;
+    pagedCtx.pages = Math.max(1, Math.ceil(pagedCtx.totalW / pagedCtx.vStride));
   } else {
     pagedCtx.totalW = flow.scrollWidth;
     pagedCtx.pages = Math.max(1, Math.round((flow.scrollWidth + PG_GAP) / pagedCtx.stride));
@@ -83,10 +87,10 @@ function measurePaged() {
   state.filePages = pagedCtx.pages;
 }
 
-/* 翻页位移: 横排 translateX, 竖排 translateY(CSS columns 沿 inline 轴纵向堆叠) */
+/* 翻页位移: 竖排与横排都沿物理X轴(竖排内容起于右端, 向左推进), 差别只在步进来源 */
 function pageTx(i) {
   const c = pagedCtx;
-  if (c.vertical) return -i * c.clientHeight;
+  if (c.vertical) return -i * c.vStride;
   return -i * c.stride;
 }
 
@@ -102,7 +106,7 @@ function applyPagedTransform(instant) {
   pyMarkMove();
   syncUnitForPage();
   const { flow } = pagedCtx;
-  const tx = pagedCtx.vertical ? `translateY(${pageTx(state.pageIdx)}px)` : `translateX(${pageTx(state.pageIdx)}px)`;
+  const tx = `translateX(${pageTx(state.pageIdx)}px)`;
   if (instant) {
     const prev = flow.style.transition;
     flow.style.transition = "none";
@@ -121,11 +125,8 @@ function applyBump(dir) {
   if (!pagedCtx) return;
   const { flow } = pagedCtx;
   clearTimeout(bumpTimer);
-  const bumpTx = pagedCtx.vertical
-    ? `translateY(${pageTx(state.pageIdx) - dir * 18}px)`
-    : `translateX(${pageTx(state.pageIdx) - dir * 18}px)`;
   flow.style.transition = "transform .12s ease";
-  flow.style.transform = bumpTx;
+  flow.style.transform = `translateX(${pageTx(state.pageIdx) - dir * 18}px)`;
   bumpTimer = setTimeout(() => applyPagedTransform(false), 130);
 }
 
@@ -139,9 +140,11 @@ function gotoPage(n, instant = false) {
 function anchorToPage(el) {
   if (!pagedCtx || !el) return null;
   if (pagedCtx.vertical) {
-    let top = 0;
-    for (let n = el; n && n !== pagedCtx.flow; n = n.offsetParent) top += n.offsetTop;
-    return Math.max(0, Math.min(pagedCtx.pages - 1, Math.floor(top / pagedCtx.clientHeight)));
+    /* 竖排内容起于右端: 元素的阅读进度 = 总宽 - 距流左缘偏移 */
+    let left = 0;
+    for (let n = el; n && n !== pagedCtx.flow; n = n.offsetParent) left += n.offsetLeft;
+    const distFromStart = Math.max(0, pagedCtx.totalW - left);
+    return Math.max(0, Math.min(pagedCtx.pages - 1, Math.floor(distFromStart / pagedCtx.vStride)));
   }
   const fr = pagedCtx.flow.getBoundingClientRect();
   return Math.max(0, Math.min(pagedCtx.pages - 1,
@@ -225,15 +228,19 @@ let scrollMarks = [];
 let scrollSyncQueued = false;
 let markOffsetsValid = false, markCacheSize = -1, markCacheAt = 0;
 
-/* 锚点文档坐标缓存: 竖排用 offsetLeft(块轴=物理水平), 横排用 offsetTop(块轴=物理垂直) */
+/* 锚点文档坐标缓存: 统一换算为"距内容起点的阅读距离"(竖排=总宽-物理X, 横排=物理Y), 保证二分单调递增 */
 function refreshMarkOffsets(doc) {
-  for (const m of scrollMarks) m.y = absDocOffset(m.el);
+  const docW = state.vertical ? (doc.documentElement.scrollWidth || 0) : 0;
+  for (const m of scrollMarks) {
+    const off = absDocOffset(m.el);
+    m.y = state.vertical ? Math.max(0, docW - off) : off;
+  }
   scrollMarks.sort((a, b) => a.y - b.y || a.g - b.g);   /* 保证二分单调性 */
   markCacheSize = state.vertical
-    ? (doc.documentElement.scrollWidth || 0)
+    ? docW
     : (doc.documentElement.scrollHeight || 0);
-  markOffsetsValid = true;
   markCacheAt = performance.now();
+  markOffsetsValid = true;
 }
 function ensureMarkOffsets(doc) {
   const curSize = state.vertical
@@ -360,8 +367,8 @@ function scrollByPage(direction) {
   const win = $("bookFrame").contentWindow;
   if (!win) return;
   const behavior = REDUCED_MOTION ? "instant" : "smooth";
-  /* 竖排: 翻页沿块轴(物理水平)方向, 横排沿块轴(物理垂直)方向 */
-  if (state.vertical) win.scrollBy({ left: direction * getPageHeight(), behavior });
+  /* 竖排: 前进=物理向左(Chrome RTL系轴 scrollX 为负值域); 横排: 物理向下 */
+  if (state.vertical) win.scrollBy({ left: -direction * getPageHeight(), behavior });
   else win.scrollBy({ top: direction * getPageHeight(), behavior });
 }
 

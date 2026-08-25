@@ -93,6 +93,7 @@ const state = {
   unitIdx: 0,
   auto: false,
   readMode: localStorage.getItem("readMode") === "paged" ? "paged" : "scroll",
+  vertical: localStorage.getItem("vertical") === "1",
   shelfView: localStorage.getItem("shelfView") === "list" ? "list" : "grid",
   renderWhole: false,
   wholeLoaded: false,
@@ -1646,13 +1647,13 @@ function autoTick(ts) {
         flipPage(1);
       }
     } else if (win?.document && !autoJumping) {
-      /* 竖排: 自动滚动沿块轴(物理水平); 横排: 沿块轴(物理垂直) */
+      /* 竖排: 自动滚动前进=物理向左(负left); 横排: 物理向下 */
       const autoDelta = state.speed * 15 * dt;
-      if (state.vertical) win.scrollBy({ left: autoDelta, behavior: "instant" });
+      if (state.vertical) win.scrollBy({ left: -autoDelta, behavior: "instant" });
       else win.scrollBy({ top: autoDelta, behavior: "instant" });
       const docEl = win.document.documentElement;
       const atEnd = state.vertical
-        ? (win.scrollX || 0) + (win.innerWidth || 0) >= (docEl.scrollWidth || 0) - 2
+        ? -(win.scrollX || 0) + (win.innerWidth || 0) >= (docEl.scrollWidth || 0) - 2
         : (win.scrollY || 0) + (win.innerHeight || 0) >= (docEl.scrollHeight || 0) - 2;
       if (atEnd && !autoJumping
           && performance.now() - autoChapterStart >= 1500) {
