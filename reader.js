@@ -1239,7 +1239,8 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
      html,body 尺寸归零解除约束; body max-height 锁定行内轴为一屏; body>* max-width:none 放开块轴让内容自然扩展; overflow-x:auto 启用列间水平滚动 */
   const vertStyle = state.vertical
     ? (paged
-        ? `body{writing-mode:vertical-rl;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}`
+        ? `body{writing-mode:vertical-rl;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}
+           html{overflow-x:auto;overflow-y:hidden;} body{overflow:visible;}`
         : `html,body{height:auto;width:auto;min-height:0;} body{writing-mode:vertical-rl;max-height:100vh;overflow-x:auto;overflow-y:hidden;padding:48px 0;} body>*{max-width:none;} img,svg,video{max-width:calc(100vh - 80px);max-height:calc(100vw - 80px);}`)
     : `html,body{writing-mode:horizontal-tb !important;}`;   /* 兜底: 压制书籍内联竖排样式 */
   /* 书籍字体优先: 字体栈注入在书籍样式之前, 书籍任何字体声明(含@font-face内嵌)自然覆盖;
@@ -1395,7 +1396,14 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
     for (const ev of ["dragenter","dragover"]) doc.addEventListener(ev, dragHover);
     doc.addEventListener("dragleave", dragLeave);
     doc.addEventListener("drop", dropFile);
-    doc.addEventListener("wheel", pagedWheel, {passive:true});
+    /* 滚轮分发: 翻页模式→翻页手势; 竖排滚动→浏览器不映射垂直滚轮到块轴, 手动桥接; 横排滚动→原生 */
+    doc.addEventListener("wheel", (e) => {
+      if (pagedActive()) { pagedWheel(e); return; }
+      if (!state.vertical || e.ctrlKey) return;
+      e.preventDefault();
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      scrollByDelta(doc.defaultView, d);
+    }, {passive:false});
     doc.addEventListener("touchstart", frameTouchStart, {passive:true});
     doc.addEventListener("touchmove", frameTouchMove, {passive:true});
     doc.addEventListener("touchend", frameTouchEnd, {passive:false});

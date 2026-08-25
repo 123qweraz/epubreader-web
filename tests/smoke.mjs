@@ -409,19 +409,25 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`flipPage(1)`);
   await sleep(400);
   const vTx = await evalJs(`(() => {
-    const el = document.getElementById("bookFrame").contentDocument.querySelector(".pgflow");
+    const f = document.getElementById("bookFrame");
+    const doc = f.contentDocument;
+    const el = doc.querySelector(".pgflow");
     if (!el) return { err: "no pgflow" };
     const m = getComputedStyle(el).transform;
     const sw = el.scrollWidth, cw = el.clientWidth, sh = el.scrollHeight, ch = el.clientHeight;
     const cols = getComputedStyle(el).columnWidth;
-    const ctx = typeof pagedCtx === "object" && pagedCtx ? { vertical: pagedCtx.vertical, pages: pagedCtx.pages, totalW: pagedCtx.totalW, stride: pagedCtx.stride, w: pagedCtx.w } : null;
-    const body = document.getElementById("bookFrame").contentDocument.body;
-    const bodyW = body.scrollWidth, bodyH = body.scrollHeight;
+    const ctx = typeof pagedCtx === "object" && pagedCtx ? { vertical: pagedCtx.vertical, pages: pagedCtx.pages, totalW: pagedCtx.totalW, vStride: pagedCtx.vStride, w: pagedCtx.w } : null;
+    const body = doc.body;
     const bodyCS = getComputedStyle(body);
-    return { m, sw, cw, sh, ch, cols, ctx, pageIdx: typeof state !== "undefined" ? state.pageIdx : -1, bodyW, bodyH, bodyWM: bodyCS.writingMode, bodyOW: bodyCS.overflow, bodyOY: bodyCS.overflowY, bodyOX: bodyCS.overflowX };
+    /* 竖排翻页=文档滚动定位: 校验 scrollX 与 min(pageIdx*vStride, 最大可滚) 对齐 */
+    const scrollX = f.contentWindow.scrollX;
+    const maxX = typeof scrollMax === "function" ? scrollMax(f.contentWindow) : -1;
+    return { m, sw, cw, sh, ch, cols, ctx, pageIdx: typeof state !== "undefined" ? state.pageIdx : -1, scrollX, maxX, bodyWM: bodyCS.writingMode };
   })()`);
   console.log("FLIP DEBUG:", JSON.stringify(vTx));
-  ok(vTx.m && vTx.m !== "none" && vTx.ctx?.vertical && vTx.ctx?.pages > 1, "竖排: flipPage(1) 产生位移且竖排上下文有效");
+  const expectX = Math.min(vTx.pageIdx * (vTx.ctx?.vStride || 0), vTx.maxX);
+  ok(vTx.ctx?.vertical && vTx.ctx?.pages > 1 && Math.abs(vTx.scrollX + expectX) < 4,
+    `竖排: flipPage(1) 滚动定位对齐(scrollX=${vTx.scrollX}, page=${vTx.pageIdx}/${vTx.ctx?.pages})`);
   /* 关闭竖排 → 恢复 horizontal-tb */
   await evalJs(`document.getElementById("verticalToggle").checked = false; document.getElementById("verticalToggle").dispatchEvent(new Event("change"))`);
   await evalJs(`(async()=>{ let n=0; await new Promise(done=>{ const w=()=>{ const d=document.getElementById("bookFrame").contentDocument; const ok=d&&d.body&&getComputedStyle(d.body).writingMode==="horizontal-tb"; if(ok||++n>40) done(); else setTimeout(w,100); }; w(); }); })()`);

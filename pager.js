@@ -106,25 +106,33 @@ function applyPagedTransform(instant) {
   pyMarkMove();
   syncUnitForPage();
   const { flow } = pagedCtx;
-  const tx = `translateX(${pageTx(state.pageIdx)}px)`;
-  if (instant) {
-    const prev = flow.style.transition;
-    flow.style.transition = "none";
-    flow.style.transform = tx;
-    void flow.offsetWidth;
-    flow.style.transition = prev;
-  } else {
-    flow.style.transition = "transform .28s ease";
-    flow.style.transform = tx;
+  if (pagedCtx.vertical) {
+    /* 竖排: pgflow 自右向左延伸且 body 不再裁剪 → 用文档滚动定位页(translate 会把内容推出视口外成白屏) */
+    const win = pagedCtx.doc.defaultView;
+    const target = state.pageIdx * pagedCtx.vStride;
+    if (instant || REDUCED_MOTION) scrollToPos(win, target);
+    else win.scrollTo({ left: -target, behavior: "smooth" });
+    updatePageInfo();
+    return;
   }
+  flow.style.transition = instant ? "none" : "transform .28s ease";
+  if (instant) { void flow.offsetWidth; }
+  flow.style.transform = `translateX(${pageTx(state.pageIdx)}px)`;
   updatePageInfo();
 }
 
 let bumpTimer = 0;
 function applyBump(dir) {
   if (!pagedCtx) return;
-  const { flow } = pagedCtx;
   clearTimeout(bumpTimer);
+  if (pagedCtx.vertical) {
+    /* 竖排无位移变换可弹: 以回滚 18px 的过冲模拟碰撞反馈 */
+    const win = pagedCtx.doc.defaultView;
+    scrollToPos(win, Math.max(0, state.pageIdx * pagedCtx.vStride - dir * 18));
+    bumpTimer = setTimeout(() => applyPagedTransform(false), 130);
+    return;
+  }
+  const { flow } = pagedCtx;
   flow.style.transition = "transform .12s ease";
   flow.style.transform = `translateX(${pageTx(state.pageIdx) - dir * 18}px)`;
   bumpTimer = setTimeout(() => applyPagedTransform(false), 130);
@@ -317,10 +325,10 @@ function frameTouchEnd(e) {
   const t = e.changedTouches[0];
   const dx = t.clientX - touchX, dy = t.clientY - touchY, dt = performance.now() - touchT;
   /* 横向快扫翻页: 仅翻页模式消费; 滚动模式不拦截, 原生滚动照常
-     竖排内容随页右移 → 右扫=下一页(与横排相反) */
+     竖排翻页同样沿物理X推进(内容左移) → 扫动手势与横排一致 */
   if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 600 && pagedActive()) {
     e.preventDefault();
-    flipPage((dx < 0 ? 1 : -1) * (pagedCtx.vertical ? -1 : 1));
+    flipPage(dx < 0 ? 1 : -1);
     return;
   }
   if (touchMoved || dt >= 300) return;   /* 拖选/长按不算点按 */
