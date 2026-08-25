@@ -100,8 +100,8 @@ try {
 window.alert = m => console.warn("[alert-suppressed]", String(m).slice(0, 120));
 window.confirm = () => false;
 window.prompt = () => null;
-/* 通用 ZIP 构造器(store 直存), 供边缘结构用例自由拼装 */
-window.__assembleZip = files => {
+/* 通用 ZIP 构造器(store 直存), 供边缘结构用例自由拼装; o.zip64 写哨兵EOCD+定位器+EOCD64 */
+window.__assembleZip = (files, o = {}) => {
   const enc = new TextEncoder();
   const norm = files.map(([n, s]) => [n, typeof s === "string" ? enc.encode(s) : s]);
   const chunks = [], centrals = [];
@@ -126,10 +126,27 @@ window.__assembleZip = files => {
   }
   let cdSize = 0;
   for (const c of centrals) cdSize += c.length;
-  const eocd = new DataView(new ArrayBuffer(22));
-  eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, norm.length, true); eocd.setUint16(10, norm.length, true);
-  eocd.setUint32(12, cdSize, true); eocd.setUint32(16, offset, true);
-  const parts = [...chunks, ...centrals, new Uint8Array(eocd.buffer)];
+  let parts;
+  if (o.zip64) {
+    const z = new DataView(new ArrayBuffer(56));
+    z.setUint32(0, 0x06064b50, true); z.setBigUint64(4, 44n, true);
+    z.setUint16(12, 45, true); z.setUint16(14, 45, true);
+    z.setUint32(16, 0, true); z.setUint32(20, 0, true);
+    z.setBigUint64(24, BigInt(norm.length), true); z.setBigUint64(32, BigInt(norm.length), true);
+    z.setBigUint64(40, BigInt(cdSize), true); z.setBigUint64(48, BigInt(offset), true);
+    const loc = new DataView(new ArrayBuffer(20));
+    loc.setUint32(0, 0x07064b50, true); loc.setUint32(4, 0, true);
+    loc.setBigUint64(8, BigInt(offset + cdSize), true); loc.setUint32(16, 1, true);
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, 0xffff, true); e.setUint16(10, 0xffff, true);
+    e.setUint32(12, 0xffffffff, true); e.setUint32(16, 0xffffffff, true);
+    parts = [...chunks, ...centrals, new Uint8Array(z.buffer), new Uint8Array(loc.buffer), new Uint8Array(e.buffer)];
+  } else {
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, norm.length, true); eocd.setUint16(10, norm.length, true);
+    eocd.setUint32(12, cdSize, true); eocd.setUint32(16, offset, true);
+    parts = [...chunks, ...centrals, new Uint8Array(eocd.buffer)];
+  }
   const total = parts.reduce((s, p) => s + p.length, 0);
   const buf = new Uint8Array(total);
   let pos = 0;
@@ -166,7 +183,7 @@ window.__rawEpub = (title, o = {}) => {
   if (!o.noChapter)
     f.push([o.chapEntry || "OEBPS/c1.xhtml", o.utf16Chapter ? enc16(chapStr) : chapStr]);
   for (const e of (o.extra || [])) f.push(e);
-  return window.__makeEpubFile(window.__assembleZip(f), title + ".epub");
+  return window.__makeEpubFile(window.__assembleZip(f, { zip64: !!o.zip64 }), title + ".epub");
 };
 `);
 
@@ -301,6 +318,7 @@ window.__rawEpub = (title, o = {}) => {
   await openWild(`window.__rawEpub("空格路径书", { container: "OEBPS/my%20book/content.opf", opfEntry: "OEBPS/my book/content.opf", chapEntry: "OEBPS/my book/c1.xhtml" })`, "空格路径书", "容错: full-path百分号编码解码后命中空格目录条目");
   await openWild(`window.__rawEpub("反斜杠书", { opfEntry: "OEBPS\\\\content.opf", chapEntry: "OEBPS\\\\c1.xhtml" })`, "反斜杠书", "容错: Windows反斜杠条目名归一化后可开");
   await openWild(`window.__rawEpub("编码书", { utf16Chapter: true })`, "编码书", "容错: UTF-16LE带BOM章节按编码探测正确渲染");
+  await openWild(`window.__rawEpub("zip64书", { zip64: true })`, "zip64书", "容错: Zip64哨兵EOCD经定位器+EOCD64正确解析");
 
   /* 单章损坏隔离: manifest 指认的章节文件缺失 → 占位页而非整本拒开 */
   await evalJs(`openBookFile(window.__rawEpub("缺章书", { noChapter: true }))`);

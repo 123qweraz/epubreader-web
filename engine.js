@@ -25,9 +25,17 @@ class ZipReader {
     throw new Error(t("zipBad"));
   }
   parse() {
-    const e = this.findEOCD();
-    const count = this.u16(e + 10), cdSize = this.u32(e + 12), cdOffset = this.u32(e + 16);
-    if (count === 0xffff || cdOffset === 0xffffffff) throw new Error(t("zip64"));
+    let e = this.findEOCD();
+    let count = this.u16(e + 10), cdSize = this.u32(e + 12), cdOffset = this.u32(e + 16);
+    /* Zip64: 哨兵值出现时经定位器(EOCD前20字节)找 EOCD64 取真实 count/size/offset */
+    if (count === 0xffff || cdOffset === 0xffffffff || cdSize === 0xffffffff) {
+      if (this.buffer.byteLength < 20 || this.u32(e - 20) !== 0x07064b50) throw new Error(t("zip64"));
+      const o64 = Number(this.view.getBigUint64(e - 12, true));
+      if (this.u32(o64) !== 0x06064b50) throw new Error(t("zip64"));
+      count = Number(this.view.getBigUint64(o64 + 32, true));
+      cdSize = Number(this.view.getBigUint64(o64 + 40, true));
+      cdOffset = Number(this.view.getBigUint64(o64 + 48, true));
+    }
     if (!cdSize) throw new Error(t("zipEmpty"));
     let p = cdOffset;
     for (let i = 0; i < count; i++) {
@@ -36,11 +44,29 @@ class ZipReader {
       const crc = this.u32(p + 16);
       const compressed = this.u32(p + 20), uncompressed = this.u32(p + 24);
       const nameLen = this.u16(p + 28), extraLen = this.u16(p + 30), commentLen = this.u16(p + 32);
-      const localOffset = this.u32(p + 42);
+      let localOffset = this.u32(p + 42), compressed2 = compressed, uncompressed2 = uncompressed;
+      /* 条目级 Zip64: 任一哨兵字段命中时从扩展字段(headerId 0x0001)按固定顺序读回真实值
+         (原始尺寸→压缩尺寸→本地头偏移, 仅哨兵化字段存在对应槽位); 压缩尺寸必须回读否则解压切片错位 */
+      if (compressed2 === 0xffffffff || uncompressed2 === 0xffffffff || localOffset === 0xffffffff) {
+        let q = p + 46 + nameLen;
+        const qEnd = q + extraLen;
+        while (q + 4 <= qEnd) {
+          const hid = this.u16(q), dLen = this.u16(q + 2);
+          if (hid === 0x0001) {
+            let d = q + 4;
+            const dEnd = Math.min(q + 4 + dLen, qEnd);
+            if (uncompressed2 === 0xffffffff && d + 8 <= dEnd) { uncompressed2 = Number(this.view.getBigUint64(d, true)); d += 8; }
+            if (compressed2 === 0xffffffff && d + 8 <= dEnd) { compressed2 = Number(this.view.getBigUint64(d, true)); d += 8; }
+            if (localOffset === 0xffffffff && d + 8 <= dEnd) localOffset = Number(this.view.getBigUint64(d, true));
+            break;
+          }
+          q += 4 + dLen;
+        }
+      }
       const name = this.decodeName(this.bytes(p + 46, nameLen), (flags & 0x800) !== 0);
       /* 条目名归一化: Windows 工具产出的反斜杠分隔与 ./ /xx/../ 冗余段在此统一,
          后续 href 解析(resolvePath 同规则)即可直接命中条目 */
-      this.entries.set(normalize(name), { flags, method, crc, compressed, uncompressed, localOffset });
+      this.entries.set(normalize(name), { flags, method, crc, compressed: compressed2, uncompressed: uncompressed2, localOffset });
       p += 46 + nameLen + extraLen + commentLen;
     }
   }
