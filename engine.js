@@ -288,6 +288,22 @@ function collectNavPoints(points, depth, out) {
     collectNavPoints([...p.children].filter(c => c.localName === "navPoint"), src ? depth + 1 : depth, out);
   }
 }
+/* ---- 扁平目录层级推断: 野生书 NCX/nav 全平级时, 按标题编号约定(第X章/N.M/N.M.K)重建深度 ---- */
+function tocLabelLevel(label) {
+  const s = String(label || "").trim();
+  if (/^第\s*([0-9０-９]+|[一二三四五六七八九十百千两]+)\s*[章节卷回部篇话]/.test(s)) return 0;
+  if (/^(chapter|lecture|part)\s+\w/i.test(s)) return 0;
+  const dm = /^(\d+(?:[．.]\d+)+)(?:[\s.、．]|$)/.exec(s);
+  if (dm) return dm[1].split(/[．.]/).length - 1;
+  return 0; /* 无编号条目(扉页/版权/序/附录等) → 顶级 */
+}
+function inferFlatTocDepths(entries) {
+  if (!entries || entries.length < 6 || !entries.every(e => (e.depth || 0) === 0)) return entries;
+  const levels = entries.map(e => tocLabelLevel(e.label));
+  if (levels.filter(l => l > 0).length < 3) return entries; /* 编号子条目太少不像多级书, 不猜 */
+  levels.forEach((l, i) => { entries[i].depth = l; });
+  return entries;
+}
 async function buildToc(zip, opfPath, opf, manifest, spine) {
   // EPUB 3: navigation document. The nav is a separate XHTML item in the manifest.
   const navItem = [...manifest.values()].find(x => /(^|\s)nav(\s|$)/i.test(x.props));
@@ -300,7 +316,7 @@ async function buildToc(zip, opfPath, opf, manifest, spine) {
       if (nav) {
         const found = [];
         collectNavLinks(nav, 0, found);
-        const entries = found.map(({a, depth}) => tocEntryFromLink(a.textContent, a.getAttribute("href"), spine, navPath, opfPath, depth)).filter(Boolean);
+        const entries = inferFlatTocDepths(found.map(({a, depth}) => tocEntryFromLink(a.textContent, a.getAttribute("href"), spine, navPath, opfPath, depth)).filter(Boolean));
         if (entries.length) return entries;
       }
     } catch (e) { console.warn("EPUB nav 读取失败", e); }
@@ -317,7 +333,7 @@ async function buildToc(zip, opfPath, opf, manifest, spine) {
       const doc = xmlDoc(xml);
       const found = [];
       collectNavPoints([...doc.querySelectorAll("navPoint")].filter(p => !p.parentElement?.closest("navPoint")), 0, found);
-      const entries = found.map(({label, src, depth}) => tocEntryFromLink(label, src, spine, ncxPath, opfPath, depth)).filter(Boolean);
+      const entries = inferFlatTocDepths(found.map(({label, src, depth}) => tocEntryFromLink(label, src, spine, ncxPath, opfPath, depth)).filter(Boolean));
       if (entries.length) return entries;
     } catch (e) { console.warn("EPUB NCX 读取失败", e); }
   }
