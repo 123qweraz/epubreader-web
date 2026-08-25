@@ -189,7 +189,7 @@ window.__rawEpub = (title, o = {}) => {
 
   /* ---- 1. 静态结构 ---- */
   ok(await evalJs(`!!document.querySelector(".setTabs") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput") && document.getElementById("exportData").closest("#settingsPanel") !== null`), "设置面板分页含备份页导出/导入");
-  ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 4 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="advanced"]').hidden && !!document.getElementById("pinyinToggle").closest('.setPage[data-page="advanced"]')`), "四分页结构且默认外观页, 拼音开关在高级页, 旧菜单已移除");
+  ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 4 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="advanced"]').hidden && !!document.getElementById("annotateSeg").closest('.setPage[data-page="advanced"]')`), "四分页结构且默认外观页, 注音分段控件在高级页, 旧菜单已移除");
   ok(await evalJs(`!!document.getElementById("editShelfBtn") && document.getElementById("shelfEditBtns").hidden && !document.getElementById("shelfIdleBtns").hidden`), "编辑按钮存在且默认非编辑态");
   ok(await evalJs(`document.getElementById("fileMenu") === null && document.getElementById("menuBtn") === null`), "阅读侧三点菜单保持移除");
   ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && !!document.getElementById("closeBookBtn").querySelector("svg")`), "工具栏✕关闭按钮初始隐藏(svg图标)");
@@ -278,7 +278,7 @@ window.__rawEpub = (title, o = {}) => {
     return { native: rubies.length > 0 && rubies.every(r => !r.classList.contains("py")), flag: state.bookHasRuby };
   })()`);
   ok(r1.native && r1.flag, "EPUB原生注音保留显示且书级标志置位");
-  await evalJs(`document.getElementById("pinyinToggle").click()`);
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="pinyin"]').click()`);
   await sleep(1500);
   const r2 = await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;
@@ -296,11 +296,50 @@ window.__rawEpub = (title, o = {}) => {
   ok(r2.nativeKept && r2.ext > 0, `外挂注音带py类(${r2.ext}个)且不嵌套原生ruby`);
   ok(r2.warmed && r2.noPersist, "词典预热标记写入且开关状态不持久化");
   ok(r2.tip, "自带注音提醒toast出现");
-  await evalJs(`document.getElementById("pinyinToggle").click()`);
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="off"]').click()`);
   await sleep(500);
   await evalJs(`document.getElementById("closeBookBtn").click()`);
   await sleep(300);
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "注音测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
+  /* ---- 6b-2. 日语罗马音注音(wapuro转换器 + 书内假名furigana转写 + 中日混排分流) ---- */
+  const rc = await evalJs(`JSON.stringify({
+    a: toRomaji("おうふう"), b: toRomaji("っきょう"), c: toRomaji("カタカナー"),
+    d: toRomaji("にほんご"), e: toRomaji("きょう")
+  })`);
+  const rcp = JSON.parse(rc);
+  ok(rcp.a === "oufuu" && rcp.b === "kkyou" && rcp.d === "nihongo" && rcp.e === "kyou",
+    `wapuro罗马音转换(おうふう=${rcp.a}, っきょう=${rcp.b}, にほんご=${rcp.d})`);
+  await evalJs(`window.__jaZip = window.__assembleZip([
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>日语测试书</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" lang="ja"><head><title>c1</title></head><body><p>ひらがなとカタカナ、<ruby>日本語<rt>にほんご</rt></ruby>の試験。中文汉字混排。</p></body></html>']
+  ]); "ok"`);
+  await evalJs(`openBookFile(window.__makeEpubFile(window.__jaZip, "ja.epub"))`);
+  await sleep(900);
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="romaji"]').click()`);
+  await sleep(800);
+  const rj = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const byRb = t => [...d.querySelectorAll("ruby.py")].find(r => r.childNodes[0]?.textContent === t)?.querySelector("rt")?.textContent;
+    const natRt = [...d.querySelectorAll("ruby:not(.py) > rt")].map(r => r.textContent)[0];
+    return {
+      ext: d.querySelectorAll("ruby.py").length,
+      hi: byRb("ひ"), ga: byRb("が"), na: byRb("ナ"),
+      natRt,
+      hanUntouched: ![...d.querySelectorAll("ruby.py")].some(r => /[\u4e00-\u9fff]/.test(r.childNodes[0]?.textContent || ""))
+    };
+  })()`);
+  ok(rj.ext >= 10 && rj.hi === "hi" && rj.ga === "ga" && rj.na === "na", `假名外挂罗马音ruby(${rj.ext}个, ひ=${rj.hi} が=${rj.ga} ナ=${rj.na})`);
+  ok(rj.natRt === "nihongo", `书内furigana转罗马音(${rj.natRt})`);
+  ok(rj.hanUntouched, "罗马音模式中文汉字不外挂");
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="off"]').click()`);
+  await sleep(400);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "日语测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */

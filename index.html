@@ -122,13 +122,14 @@
     <div class="setPage" data-page="advanced" hidden>
     <div class="settingSection" data-i18n="secAdvanced">高级功能</div>
     <div class="settingRow">
-      <label class="switch" title="为无注音的汉字外挂拼音标注；会话级开关，重启应用后需重新开启" data-i18n-title="pinyinTip">
-        <input id="pinyinToggle" type="checkbox" aria-label="拼音标注" data-i18n-aria="pinyinAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="pinyinLabel">拼音标注</span>
+      <span class="settingLabel" data-i18n="pinyinLabel">外挂注音</span>
+      <div id="annotateSeg" class="segCtl" role="group" aria-label="注音模式" data-i18n-aria="pinyinAria">
+        <button type="button" data-ann="off" data-i18n="annOff">关</button>
+        <button type="button" data-ann="pinyin" data-i18n="annPinyin">拼音</button>
+        <button type="button" data-ann="romaji" data-i18n="annRomaji">罗马音</button>
+      </div>
     </div>
-    <div class="settingHint" data-i18n="pinyinSessionTip">外挂注音不影响书籍自带注音的显示；开启状态不做持久化，每次打开应用需重新开启。</div>
+    <div class="settingHint" data-i18n="pinyinSessionTip">拼音为汉字标注，罗马音为日语假名标注（书内假名注音一并转换）；不影响书籍自带注音的显示。开启状态不做持久化，每次打开应用需重新开启。</div>
     </div>
     <div class="setPage" data-page="layout" hidden>
     <div class="settingSection" data-i18n="secType">排版</div>

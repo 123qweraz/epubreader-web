@@ -13,42 +13,120 @@ function ensurePinyinLib() {
   return pinyinLibPromise;
 }
 const HAN_RE = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+/* 假名(平/片)与长音符ー; 拼音模式不匹配, 罗马音模式专用 */
+const KANA_RE = /[\u3041-\u309f\u30a0-\u30fc]/;
+const KANA_HAN_RE = new RegExp(`(?:${KANA_RE.source}|${HAN_RE.source})`);
+
+/* ---------- wapuro 式罗马音转换(打字输入习惯: おう→ou っき→kki ー→重复前元音) ---------- */
+const KANA_BASE = { /* 平假名基础音+浊音+半浊音 */
+  あ:"a",い:"i",う:"u",え:"e",お:"o", わ:"wa",ゐ:"i",ゑ:"e", を:"wo",ん:"n",
+  か:"ka",き:"ki",く:"ku",け:"ke",こ:"ko", が:"ga",ぎ:"gi",ぐ:"gu",げ:"ge",ご:"go",
+  さ:"sa",し:"shi",す:"su",せ:"se",そ:"so", ざ:"za",じ:"ji",ず:"zu",ぜ:"ze",ぞ:"zo",
+  た:"ta",ち:"chi",つ:"tsu",て:"te",と:"to", だ:"da",ぢ:"ji",づ:"zu",で:"de",ど:"do",
+  な:"na",に:"ni",ぬ:"nu",ね:"ne",の:"no", は:"ha",ひ:"hi",ふ:"fu",へ:"he",ほ:"ho",
+  ば:"ba",び:"bi",ぶ:"bu",べ:"be",ぼ:"bo", ぱ:"pa",ぴ:"pi",ぷ:"pu",ぺ:"pe",ぽ:"po",
+  ま:"ma",み:"mi",む:"mu",め:"me",も:"mo", や:"ya",ゆ:"yu",よ:"yo",
+  ら:"ra",り:"ri",る:"ru",れ:"re",ろ:"ro", 
+  ぁ:"xa",ぃ:"xi",ぅ:"xu",ぇ:"xe",ぉ:"xo", ゃ:"xya",ゅ:"xyu",ょ:"xyo"
+};
+const KANA_DIGRAPH = { /* 拄音: 两字符最长匹配 */
+  きゃ:"kya",きゅ:"kyu",きょ:"kyo", しゃ:"sha",しゅ:"shu",しょ:"sho",
+  ちゃ:"cha",ちゅ:"chu",ちょ:"cho", てゃ:"tha",てゅ:"thu",てょ:"tho",
+  にゃ:"nya",にゅ:"nyu",にょ:"nyo", ひゃ:"hya",ひゅ:"hyu",ひょ:"hyo",
+  みゃ:"mya",みゅ:"myu",みょ:"myo", りゃ:"rya",りゅ:"ryu",りょ:"ryo",
+  ぎゃ:"gya",ぎゅ:"gyu",ぎょ:"gyo", じゃ:"ja",じゅ:"ju",じょ:"jo",
+  ぢゃ:"ja",ぢゅ:"ju",ぢょ:"jo", いぇ:"ye", ひぇ:"hye",
+  びゃ:"bya",びゅ:"byu",びょ:"byo", ぴゃ:"pya",ぴゅ:"pyu",ぴょ:"pyo",
+  ふぁ:"fa",ふぃ:"fi",ふぇ:"fe",ふぉ:"fo", ふゅ:"fyu", ヴぁ:"va",ヴぃ:"vi",ヴぇ:"ve",ヴぉ:"vo"
+};
+const kata2hira = ch => (ch >= "\u30a1" && ch <= "\u30f3") ? String.fromCharCode(ch.charCodeAt(0) - 0x60) : ch;
+function toRomaji(s) {
+  let out = "";
+  for (let i = 0; i < s.length;) {
+    const c = s[i];
+    if (c === "ー") {   /* 长音符: 重复前一元音 */
+      const m = /[aeiou]/.exec(out.slice(-1));
+      out += m ? m[0] : ""; i++; continue;
+    }
+    const h = kata2hira(c), h2 = h + kata2hira(s[i + 1] || "");
+    if (h === "っ" || h === "ッ") {   /* 促音: 双写下一辅音 */
+      const nxt = toRomaji(s[i + 1] || "");
+      out += nxt ? nxt[0] : ""; i++; continue;
+    }
+    if (KANA_DIGRAPH[h2]) { out += KANA_DIGRAPH[h2]; i += 2; continue; }
+    if (KANA_BASE[h]) { out += KANA_BASE[h]; i++; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+/* 注音模式判定: pinyin 只注汉字 / romaji 只注假名(+书内rt转罗马音); 中日混排各注各的天然无歧义 */
+let pyMode = "pinyin";   /* 运行期由 reader.js 设置(state.annotate) */
+
+/* 书内原生 ruby rt(假名furigana) → 罗马音显示: 仅romaji模式执行, iframe DOM为一次性重建故改动安全 */
+function pyConvertNativeRt(doc) {
+  for (const rt of doc.querySelectorAll("rt")) {
+    if (rt.closest("ruby.py")) continue;
+    const txt = rt.textContent || "";
+    if (!KANA_RE.test(txt)) continue;
+    const r = toRomaji(txt);
+    if (r && r !== txt) rt.textContent = r;
+  }
+}
 /* 注音粒度参数: 小目标同步直注 / 单块上限 / 观察器邻域(纵向px, 横向%视宽) / 批预算 */
 const PY_SMALL = 20000, PY_CAP = 80000, PY_LOOK_V = "1500px", PY_LOOK_H = "60%";
 const PY_BATCH_MS = 12, PY_BATCH_CHARS = 1200, PY_SETTLE_MS = 150;
 let pyQueue = [], pyPumping = false, pyLastMove = 0;
 
 function pyCountHan(el) {
-  const m = (el.textContent || "").match(new RegExp(HAN_RE.source, "g"));
+  const RE = pyMode === "romaji" ? KANA_RE : HAN_RE;
+  const m = (el.textContent || "").match(new RegExp(RE.source, "g"));
   return m ? m.length : 0;
 }
 function pyWalker(doc, root) {
+  const want = pyMode === "romaji" ? KANA_RE : HAN_RE;
   return doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: n => HAN_RE.test(n.nodeValue) && !n.parentElement.closest("ruby,rt,script,style")
+    acceptNode: n => want.test(n.nodeValue) && !n.parentElement.closest("ruby,rt,script,style")
       ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
   });
 }
-/* 单文本节点: 连续汉字段逐字包ruby(纯DOM构建避免转义问题), 返回处理的汉字数 */
+/* 单文本节点: 连续目标文字段逐字包ruby(纯DOM构建避免转义问题), 返回处理的字数 */
 function pyAnnotateNode(node) {
   const doc = node.ownerDocument;
   const text = node.nodeValue;
   const frag = doc.createDocumentFragment();
+  const RE = pyMode === "romaji" ? KANA_RE : HAN_RE;
   let last = 0, chars = 0;
   for (let i = 0; i < text.length;) {
-    if (!HAN_RE.test(text[i])) { i++; continue; }
+    if (!RE.test(text[i])) { i++; continue; }
     let j = i + 1;
-    while (j < text.length && HAN_RE.test(text[j])) j++;
+    while (j < text.length && RE.test(text[j])) j++;
     const seg = text.slice(i, j);
     if (i > last) frag.appendChild(doc.createTextNode(text.slice(last, i)));
-    const pys = window.pinyinPro.pinyin(seg, { type: "array" });
-    for (let k = 0; k < seg.length; k++) {
-      const rb = doc.createElement("ruby");
-      rb.className = "py";   /* 外挂标记: 注入样式只作用于 ruby.py, 书籍原生注音不受连带影响 */
-      rb.textContent = seg[k];
-      const rt = doc.createElement("rt");
-      rt.textContent = pys[k] || "";
-      rb.appendChild(rt);
-      frag.appendChild(rb);
+    if (pyMode === "pinyin") {
+      const pys = window.pinyinPro.pinyin(seg, { type: "array" });
+      for (let k = 0; k < seg.length; k++) {
+        const rb = doc.createElement("ruby");
+        rb.className = "py";   /* 外挂标记: 注入样式只作用于 ruby.py, 书籍原生注音不受连带影响 */
+        rb.textContent = seg[k];
+        const rt = doc.createElement("rt");
+        rt.textContent = pys[k] || "";
+        rb.appendChild(rt);
+        frag.appendChild(rb);
+      }
+    } else {
+      /* romaji: 拄音两字符合用一个ruby, 其余逐字符 */
+      for (let k = 0; k < seg.length;) {
+        const two = seg.slice(k, k + 2);
+        const len = KANA_DIGRAPH[two] ? 2 : 1;
+        const rb = doc.createElement("ruby");
+        rb.className = "py";
+        rb.textContent = seg.slice(k, k + len);
+        const rt = doc.createElement("rt");
+        rt.textContent = len === 2 ? KANA_DIGRAPH[two] : (toRomaji(seg[k]) || "");
+        rb.appendChild(rt);
+        frag.appendChild(rb);
+        k += len;
+      }
     }
     chars += seg.length;
     last = j; i = j;
@@ -146,7 +224,19 @@ function pySetupLazy(doc, targets, counts) {
 }
 /* 派发: 总字数低于阈值全量直注(覆盖日常章节); 否则多块结构走IO懒注音 */
 function pyDispatch(doc) {
-  if (!window.pinyinPro || !doc?.body) return;
+  if (!doc?.body) return;
+  if (pyMode === "romaji") {
+    /* romaji 不依赖词典库: 书内假名furigana先转罗马音, 再对裸假名外挂ruby */
+    pyConvertNativeRt(doc);
+    const targets = collectPyTargets(doc);
+    let total = 0;
+    const counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; });
+    if (total <= PY_SMALL) { for (const el of targets) pyAnnotateRootSync(doc, el); return; }
+    if (targets.length === 1 && total > PY_CAP) { toast(t("pinyinTooLong")); return; }
+    pySetupLazy(doc, targets, counts);
+    return;
+  }
+  if (!window.pinyinPro) return;
   const targets = collectPyTargets(doc);
   let total = 0;
   const counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; });

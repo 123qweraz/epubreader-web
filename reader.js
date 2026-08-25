@@ -83,8 +83,10 @@ const state = {
   lineHeight: Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75)),
   fontFamily: localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif",
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
-  /* 外挂注音是会话级功能: 不读持久化状态, 每次启动默认关(高级功能分页可再开) */
+  /* 外挂注音是会话级功能: 不读持久化状态, 每次启动默认关(高级功能分页可再开)
+     annotate: 注音模式 off/pinyin/romaji(日语罗马音); showPinyin 为派生活动布尔供旧链路使用 */
   showPinyin: false,
+  annotate: "off",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -280,7 +282,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","annotate"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -369,7 +371,7 @@ function restorePrefsFromStorage() {
 function syncAllPrefsUI() {
   $("fontFamilySel").value = state.fontFamily;
   $("bookFontToggle").checked = state.bookFontFirst;
-$("pinyinToggle").checked = state.showPinyin;
+syncAnnotateSeg();
 /* 词典预热: 曾开启过注音的设备启动时静默预拉(SW缓存命中, 几乎零开销), 首次点击开启零等待 */
 if (localStorage.getItem("pinyinWarmed") === "1") ensurePinyinLib().catch(() => {});
   $("contentMaxToggle").checked = state.contentLimited;
@@ -1376,9 +1378,9 @@ function frameScrollHandler() {
 
 function runAfterLoad(win, doc, fragment, opts, ratio) {
   const frame = $("bookFrame");
-  /* 拼音标注: 库已就绪立即派发; 未就绪(开书即带开关)则后台加载后补注 */
+  /* 外挂注音: romaji零依赖立即派发; pinyin库就绪立即派发, 未就绪(开书即带注音)则后台加载后补注 */
   if (state.showPinyin) {
-    if (window.pinyinPro) pyDispatch(doc);
+    if (state.annotate === "romaji" || window.pinyinPro) pyDispatch(doc);
     else ensurePinyinLib().then(() => {
       if ($("bookFrame").contentDocument === doc) pyDispatch(doc);
     }).catch(() => {});
@@ -2171,32 +2173,52 @@ $("bookFontToggle").onchange = e => {
     rerenderReader();
   }
 };
-$("pinyinToggle").addEventListener("change", e => {
-  /* ruby元素烙在iframe DOM里, 开关切换都走整体重建(整书模式失效缓存), restoreRatio保持阅读位置 */
-  const forceRebuild = () => {
-    if (state.renderWhole && state.wholeLoaded) {
-      state.wholeLoaded = false;
-      safeShowUnit(state.unitIdx, { restoreRatio: true });
-    } else {
-      rerenderReader();
-    }
-  };
-  if (!e.target.checked) {
+/* 注音模式分段控件: off/pinyin/romaji; ruby元素烙在iframe DOM里, 切换都走整体重建(restoreRatio保持阅读位置) */
+function syncAnnotateSeg() {
+  document.querySelectorAll("#annotateSeg [data-ann]").forEach(b => {
+    const on = b.dataset.ann === state.annotate;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+function setAnnotate(mode, btn) {
+  if (mode === state.annotate) return;
+  if (mode === "off") {
+    state.annotate = "off";
     state.showPinyin = false;
+    pyMode = "off";
     pyReset();
-    forceRebuild();
+    forceRebuildForAnnotate();
+    syncAnnotateSeg();
     return;
   }
-  ensurePinyinLib().then(() => {
+  /* romaji 零依赖可即时生效; pinyin 需词典库 */
+  const apply = () => {
+    state.annotate = mode;
     state.showPinyin = true;
-    try { localStorage.setItem("pinyinWarmed", "1"); } catch {}   /* 词典预热标记: 下次启动静默预拉, 首次开启零等待 */
+    pyMode = mode;
+    try { localStorage.setItem("pinyinWarmed", "1"); } catch {}   /* 词典预热标记: 下次启动静默预拉 */
     /* 延迟弹出避开"全书排版中…"进度toast抢占(forceRebuild会触发整书渲染toast) */
-    if (state.bookHasRuby) setTimeout(() => { if (state.showPinyin && state.bookHasRuby) toast(t("pinyinNativeRuby")); }, 800);
-    forceRebuild();
-  }).catch(() => {
-    e.target.checked = false;
+    if (mode === "pinyin" && state.bookHasRuby) setTimeout(() => { if (state.annotate === "pinyin" && state.bookHasRuby) toast(t("pinyinNativeRuby")); }, 800);
+    forceRebuildForAnnotate();
+    syncAnnotateSeg();
+  };
+  if (mode === "romaji") { apply(); return; }
+  ensurePinyinLib().then(apply).catch(() => {
     toast(t("pinyinLoadFail"));
   });
+}
+function forceRebuildForAnnotate() {
+  if (state.renderWhole && state.wholeLoaded) {
+    state.wholeLoaded = false;
+    safeShowUnit(state.unitIdx, { restoreRatio: true });
+  } else {
+    rerenderReader();
+  }
+}
+$("annotateSeg").addEventListener("click", e => {
+  const btn = e.target.closest("[data-ann]");
+  if (btn) setAnnotate(btn.dataset.ann, btn);
 });
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
@@ -2301,7 +2323,7 @@ $("viewport").addEventListener("transitionend", e => {
 $("fontFamilySel").value = state.fontFamily;
 $("verticalToggle").checked = state.vertical;
 $("bookFontToggle").checked = state.bookFontFirst;
-$("pinyinToggle").checked = state.showPinyin;
+syncAnnotateSeg();
 $("contentMaxToggle").checked = state.contentLimited;
 syncContentInputs();
 syncCustomPickers();

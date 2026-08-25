@@ -141,6 +141,10 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .settingsPanel select { appearance: none; -webkit-appearance: none; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--button) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center; padding: 6px 26px 6px 10px; font-size: var(--fs-sm); color: var(--fg); cursor: pointer; }
 .themeChips { display: flex; gap: 6px; flex: 1; align-items: center; }
 .themeChip { flex: 1; padding: 6px 8px; font-size: var(--fs-xs); background: var(--button); white-space: nowrap; border-radius: var(--r-sm); }
+/* 注音模式三态分段控件(高级功能页): 关/拼音/罗马音 */
+.segCtl { display: flex; gap: 2px; background: var(--button); padding: 2px; border-radius: var(--r-sm); }
+.segCtl button { flex: 1; padding: 5px 10px; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; border-radius: calc(var(--r-sm) - 1px); }
+.segCtl button.active { background: var(--accent); color: var(--bg); }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
