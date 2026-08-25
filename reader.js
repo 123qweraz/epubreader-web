@@ -108,7 +108,6 @@ const state = {
     if (localStorage.getItem("contentLimited") != null) return localStorage.getItem("contentLimited") === "1";
     return true;
   })(),
-  sidePinned: localStorage.getItem("sidePinned") === "1",
   settingsPinned: localStorage.getItem("settingsPinned") === "1"
 };
 
@@ -280,7 +279,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -360,7 +359,6 @@ function restorePrefsFromStorage() {
     return (Number(localStorage.getItem("sideWidth")) || 0) > 0 ? 1100 : 700;
   })();
   state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
-  state.sidePinned = localStorage.getItem("sidePinned") === "1";
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
   syncSettingsPinned();
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
@@ -1538,7 +1536,7 @@ function toast(msg, opts = {}) {
 }
 
 function closeOverlays() {
-  if (!state.sidePinned) $("sidebar").classList.remove("open");
+  $("sidebar").classList.remove("open");
   if (!state.settingsPinned) setSettingsOpen(false);
   syncOverlayAria();
 }
@@ -1578,7 +1576,7 @@ function renderToc(entries) {
       const ui = findUnit(entry.chapterIndex, entry.fragment);
       if (ui >= 0) safeShowUnit(ui);
       else safeShow(entry.chapterIndex, entry.fragment);
-      if (!state.sidePinned) $("sidebar").classList.remove("open");
+      $("sidebar").classList.remove("open");
     };
     toc.appendChild(b);
   }
@@ -1736,7 +1734,7 @@ function applyI18n() {
     const u = state.navUnits[state.unitIdx];
     if (u) $("chapterLabel").textContent = u.label;
   }
-  applySidePin();
+  applySideMax();
   updateProgress();
   /* 切换语言时清空旧语言的搜索结果与状态(保留输入词) */
   if ($("searchStatus").textContent || $("searchResults").children.length) clearSearchResults();
@@ -1957,20 +1955,31 @@ $("tabToc").onclick = () => switchSideTab("toc");
 $("tabSearch").onclick = () => { switchSideTab("search"); $("searchInput").focus(); };
 $("tabMindMap").onclick = () => switchSideTab("mindmap");
 $("openWelcome").onclick = () => $("fileInput").click();
-const pinBtn = $("pinSidebar");
-function applySidePin() {
-  $("sidebar").classList.toggle("pinned", state.sidePinned);
-  pinBtn.classList.toggle("active", state.sidePinned);
-  pinBtn.setAttribute("aria-pressed", String(state.sidePinned));
-  pinBtn.title = state.sidePinned ? t("pinActiveTip") : t("pinTip");
+
+/* ---- 侧边栏面板控制: 最大化 / 关闭 ---- */
+const sideMaxBtn = $("maximizeSidebar");
+const sideCloseBtn = $("closeSidebar");
+const sideMaxIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>';
+const sideRestoreIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="3" y="3" width="14" height="14" rx="2" fill="var(--bg)"/></svg>';
+function applySideMax() {
+  const sb = $("sidebar");
+  const maximized = sb.classList.contains("maximized");
+  sideMaxBtn.innerHTML = maximized ? sideRestoreIcon : sideMaxIcon;
+  sideMaxBtn.title = maximized ? t("restoreTip") : t("maxTip");
+  sideMaxBtn.setAttribute("aria-label", maximized ? t("restoreAria") : t("maxAria"));
 }
-pinBtn.onclick = e => {
+sideMaxBtn.onclick = (e) => {
   e.stopPropagation();
-  state.sidePinned = !state.sidePinned;
-  localStorage.setItem("sidePinned", state.sidePinned ? "1" : "0");
-  applySidePin();
+  const sb = $("sidebar");
+  sb.classList.toggle("maximized");
+  applySideMax();
 };
-applySidePin();
+sideCloseBtn.onclick = (e) => {
+  e.stopPropagation();
+  $("sidebar").classList.remove("open", "maximized");
+  applySideMax();
+};
+applySideMax();
 
 /* ---- 侧边栏拖拽调宽 ---- */
 (function() {
@@ -1980,7 +1989,7 @@ applySidePin();
   if (saved >= 280) sb.style.width = Math.min(saved, window.innerWidth * 0.8) + "px";
   let dragging = false, startX = 0, startW = 0;
   handle.onmousedown = (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || sb.classList.contains("maximized")) return;
     dragging = true; startX = e.clientX; startW = sb.offsetWidth;
     handle.classList.add("active");
     document.body.style.cursor = "col-resize";

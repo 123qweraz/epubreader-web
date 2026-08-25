@@ -1,6 +1,6 @@
 /* EPUB Reader 网页版 Service Worker: 应用外壳离线缓存
    发版时需手动递增 VERSION 以淘汰旧缓存 */
-const VERSION = "v28";
+const VERSION = "v29";
 const CACHE = `epubreader-shell-${VERSION}`;
 const SHELL = [
   "./",

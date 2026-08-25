@@ -37,6 +37,8 @@ const I18N_STRINGS = {
     /* 侧边栏 */
     tabToc: "目录", tabSearch: "搜索", tabMindMap: "导图",
     pinTip: "固定侧边栏", pinActiveTip: "侧边栏已固定，点击改为浮动", pinAria: "固定/浮动侧边栏",
+    maxTip: "最大化面板", maxAria: "最大化面板", restoreTip: "还原面板", restoreAria: "还原面板",
+    closeSideTip: "关闭面板", closeSideAria: "关闭面板",
     searchPh: "全书搜索…",
     mmEmpty: "无目录数据，无法生成导图",
     /* 欢迎页 */
@@ -106,6 +108,8 @@ const I18N_STRINGS = {
     langAuto: "Auto",
     tabToc: "Contents", tabSearch: "Search", tabMindMap: "Map",
     pinTip: "Pin sidebar", pinActiveTip: "Sidebar pinned — click to float again", pinAria: "Pin/unpin sidebar",
+    maxTip: "Maximize panel", maxAria: "Maximize panel", restoreTip: "Restore panel", restoreAria: "Restore panel",
+    closeSideTip: "Close panel", closeSideAria: "Close panel",
     searchPh: "Search whole book…",
     mmEmpty: "No TOC data — mind map unavailable",
     shelfH: "Library", welcomeP: "Drop an EPUB / TXT file here, or click “Choose File”.", welcomeBtn: "Choose File",
