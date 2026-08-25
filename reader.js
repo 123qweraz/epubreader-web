@@ -1054,6 +1054,9 @@ async function replaceAsync(str, re, fn) {
 
 async function rewriteCss(cssText, basePath, depth = 0) {
   if (!cssText || depth > 3) return cssText;
+  /* 竖排开关未开时剥除书籍自带 writing-mode(野生竖排书在横向约束下会被裁剪成白屏);
+     用户开竖排后保留书籍声明与注入样式叠加 */
+  if (!state.vertical) cssText = cssText.replace(/(?:-(?:webkit|moz|ms)-)?writing-mode\s*:[^;}{]+;?/gi, "");
   const resolveRef = async ref => {
     ref = ref.trim().replace(/^["']|["']$/g, "");
     if (!ref || /^(data:|blob:|https?:|about:|#)/i.test(ref)) return null;
@@ -1237,7 +1240,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     ? (paged
         ? `body{writing-mode:vertical-rl;} .pgflow img,.pgflow svg,.pgflow video{max-width:calc(100% - 24px);}`
         : `html,body{height:auto;width:auto;min-height:0;} body{writing-mode:vertical-rl;max-height:100vh;overflow-x:auto;overflow-y:hidden;padding:48px 0;} body>*{max-width:none;} img,svg,video{max-width:calc(100vh - 80px);max-height:calc(100vw - 80px);}`)
-    : "";
+    : `html,body{writing-mode:horizontal-tb !important;}`;   /* 兜底: 压制书籍内联竖排样式 */
   /* 书籍字体优先: 字体栈注入在书籍样式之前, 书籍任何字体声明(含@font-face内嵌)自然覆盖;
      强制模式: 注入回书籍样式之后并加!important做正文级替换(保留书籍标题专用字体与图标字体) */
   const preFont = state.bookFontFirst ? `<style>body{font-family:${fontFamilyCss()};}</style>` : "";
