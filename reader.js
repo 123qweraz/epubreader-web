@@ -1946,12 +1946,16 @@ function syncOverlayAria() {
 function switchSideTab(tab) {
   $("tabToc").classList.toggle("active", tab === "toc");
   $("tabSearch").classList.toggle("active", tab === "search");
+  $("tabMindMap").classList.toggle("active", tab === "mindmap");
   $("toc").hidden = tab !== "toc";
   $("searchPage").hidden = tab !== "search";
+  $("mindMapPage").hidden = tab !== "mindmap";
+  if (tab === "mindmap") { resetMindMapView(); renderMindMap(); }
   syncOverlayAria();
 }
 $("tabToc").onclick = () => switchSideTab("toc");
 $("tabSearch").onclick = () => { switchSideTab("search"); $("searchInput").focus(); };
+$("tabMindMap").onclick = () => switchSideTab("mindmap");
 $("openWelcome").onclick = () => $("fileInput").click();
 const pinBtn = $("pinSidebar");
 function applySidePin() {

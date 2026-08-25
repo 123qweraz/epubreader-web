@@ -190,6 +190,7 @@
       <div class="sideTabs">
         <button id="tabToc" class="sideTab active" data-i18n="tabToc">目录</button>
         <button id="tabSearch" class="sideTab" data-i18n="tabSearch">搜索</button>
+        <button id="tabMindMap" class="sideTab" data-i18n="tabMindMap">导图</button>
       </div>
       <button id="pinSidebar" title="固定侧边栏" aria-label="固定/浮动侧边栏" data-i18n-title="pinTip" data-i18n-aria="pinAria"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3.5 3.5H6.5L10 10z"/><line x1="12" y1="13.5" x2="12" y2="20"/><line x1="7" y1="20" x2="17" y2="20"/></svg></button>
     </div>
@@ -200,6 +201,9 @@
       </div>
       <div id="searchStatus" class="searchStatus" role="status"></div>
       <div id="searchResults"></div>
+    </div>
+    <div id="mindMapPage" class="mindMapPage" hidden>
+      <div id="mindMapContent" class="mindMapContent"></div>
     </div>
   </aside>
 
@@ -243,6 +247,7 @@
   <script src="pinyin.js"></script>
   <script src="engine.js"></script>
   <script src="pager.js"></script>
+  <script src="mindmap.js"></script>
   <script src="reader.js"></script>
   <script>
     if ("serviceWorker" in navigator) {

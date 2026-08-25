@@ -35,9 +35,10 @@ const I18N_STRINGS = {
     sideReset: "恢复默认",
     langAuto: "自动",
     /* 侧边栏 */
-    tabToc: "目录", tabSearch: "搜索",
+    tabToc: "目录", tabSearch: "搜索", tabMindMap: "导图",
     pinTip: "固定侧边栏", pinActiveTip: "侧边栏已固定，点击改为浮动", pinAria: "固定/浮动侧边栏",
     searchPh: "全书搜索…",
+    mmEmpty: "无目录数据，无法生成导图",
     /* 欢迎页 */
     shelfH: "书架", welcomeP: "把 EPUB / TXT 文件拖到这里，或者点击“选择文件”。", welcomeBtn: "选择文件",
     frameTitle: "书籍内容",
@@ -103,9 +104,10 @@ const I18N_STRINGS = {
     cwMinusTip: "Narrower", cwPlusTip: "Wider", contentMaxNumAria: "Content width value",
     sideReset: "Restore defaults",
     langAuto: "Auto",
-    tabToc: "Contents", tabSearch: "Search",
+    tabToc: "Contents", tabSearch: "Search", tabMindMap: "Map",
     pinTip: "Pin sidebar", pinActiveTip: "Sidebar pinned — click to float again", pinAria: "Pin/unpin sidebar",
     searchPh: "Search whole book…",
+    mmEmpty: "No TOC data — mind map unavailable",
     shelfH: "Library", welcomeP: "Drop an EPUB / TXT file here, or click “Choose File”.", welcomeBtn: "Choose File",
     frameTitle: "Book content",
     sbPrevTip: "Previous chapter", noBook: "No book open", sbNextTip: "Next chapter",

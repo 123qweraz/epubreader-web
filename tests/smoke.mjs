@@ -435,6 +435,23 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "竖排测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(150);
 
+  /* ---- 思维导图: 开书验证tab存在+点击出图 ---- */
+  await evalJs(`openBookFile(window.__buildEpub("导图测试书"))`);
+  await sleep(1500);
+  ok(await evalJs(`!!document.getElementById("tabMindMap") && document.getElementById("tabMindMap").textContent.trim() === "导图"`), "思维导图: tab存在且文案正确");
+  ok(await evalJs(`document.getElementById("mindMapPage").hidden === true`), "思维导图: 初始隐藏");
+  await evalJs(`document.getElementById("tabMindMap").click()`);
+  await sleep(300);
+  ok(await evalJs(`document.getElementById("mindMapPage").hidden === false`), "思维导图: 点击tab显示导图面板");
+  ok(await evalJs(`document.querySelectorAll(".mmNode").length > 0`), "思维导图: 渲染出节点");
+  ok(await evalJs(`document.querySelectorAll(".mmNode.mmRoot").length === 1`), "思维导图: 存在唯一根节点");
+  await evalJs(`document.getElementById("sidebar").classList.remove("open")`);
+  await sleep(100);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(250);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "导图测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(150);
+
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */
