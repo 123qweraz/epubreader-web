@@ -83,7 +83,8 @@ const state = {
   lineHeight: Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75)),
   fontFamily: localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif",
   bookFontFirst: localStorage.getItem("bookFontFirst") !== "0",
-  showPinyin: localStorage.getItem("showPinyin") === "1",
+  /* 外挂注音是会话级功能: 不读持久化状态, 每次启动默认关(高级功能分页可再开) */
+  showPinyin: false,
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -279,7 +280,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","showPinyin","readMode","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","sidePinned"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -348,7 +349,6 @@ function restorePrefsFromStorage() {
   state.lineHeight = Math.min(2.4, Math.max(1.4, Number(localStorage.getItem("lineHeight")) || 1.75));
   state.fontFamily = localStorage.getItem("fontFamily") === "sans" ? "sans" : "serif";
   state.bookFontFirst = localStorage.getItem("bookFontFirst") !== "0";
-  state.showPinyin = localStorage.getItem("showPinyin") === "1";
   state.theme = ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light";
   state.customSlots = loadCustomSlots();
   state.customSlotIdx = Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0));
@@ -369,7 +369,9 @@ function restorePrefsFromStorage() {
 function syncAllPrefsUI() {
   $("fontFamilySel").value = state.fontFamily;
   $("bookFontToggle").checked = state.bookFontFirst;
-  $("pinyinToggle").checked = state.showPinyin;
+$("pinyinToggle").checked = state.showPinyin;
+/* 词典预热: 曾开启过注音的设备启动时静默预拉(SW缓存命中, 几乎零开销), 首次点击开启零等待 */
+if (localStorage.getItem("pinyinWarmed") === "1") ensurePinyinLib().catch(() => {});
   $("contentMaxToggle").checked = state.contentLimited;
   $("speedRange").value = String(state.speed);
   $("modeBtn").innerHTML = state.readMode === "paged" ? ICONS.paged : ICONS.scroll;
@@ -908,6 +910,7 @@ function initStateForBook(book, title, extras = {}) {
   state.unitIdx = 0;
   state.renderWhole = state.readMode === "scroll";
   state.wholeLoaded = false;
+  state.bookHasRuby = false;   /* 原生注音书级标志, 换书重置(开书后由章节内容检测置位) */
   $("bookTitle").textContent = title;
 }
 async function finishOpenBook(file, title) {
@@ -1200,9 +1203,10 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
      强制模式: 注入回书籍样式之后并加!important做正文级替换(保留书籍标题专用字体与图标字体) */
   const preFont = state.bookFontFirst ? `<style>body{font-family:${fontFamilyCss()};}</style>` : "";
   const famDecl = state.bookFontFirst ? "" : `font-family:${fontFamilyCss()} !important;`;
-  /* 拼音注音: rt继承正文色降透明度(任意主题自适应); 行高不足1.9时抬升避免上下行注音挤压 */
+  /* 拼音注音: 样式只作用于外挂产生的 ruby.py(书籍原生注音保持作者排版); 行高不足1.9时抬升避免上下行注音挤压 */
+  if (!state.bookHasRuby && /<ruby[\s>]/i.test(bodyHtml)) state.bookHasRuby = true;   /* 书级标志: 开外挂时用于提醒 */
   const pinyinCss = state.showPinyin
-    ? `<style>ruby{ruby-position:over;}rt{font-size:.55em;opacity:.7;user-select:none;}body{line-height:max(${state.lineHeight},1.9);}</style>` : "";
+    ? `<style>ruby.py{ruby-position:over;}ruby.py>rt{font-size:.55em;opacity:.7;user-select:none;}body{line-height:max(${state.lineHeight},1.9);}</style>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${BOOK_CSP}">${preFont}${headCss}<style>
     html,body{margin:0;padding:0;background:${bg};color:${fg};}
     body{${famDecl}font-size:${state.fontSize}px;line-height:${state.lineHeight};padding:48px max(24px,5vw);box-sizing:border-box;min-height:100vh;overflow-y:auto;overflow-x:hidden;}
@@ -2056,13 +2060,14 @@ $("pinyinToggle").addEventListener("change", e => {
   if (!e.target.checked) {
     state.showPinyin = false;
     pyReset();
-    localStorage.setItem("showPinyin", "0");
     forceRebuild();
     return;
   }
   ensurePinyinLib().then(() => {
     state.showPinyin = true;
-    localStorage.setItem("showPinyin", "1");
+    try { localStorage.setItem("pinyinWarmed", "1"); } catch {}   /* 词典预热标记: 下次启动静默预拉, 首次开启零等待 */
+    /* 延迟弹出避开"全书排版中…"进度toast抢占(forceRebuild会触发整书渲染toast) */
+    if (state.bookHasRuby) setTimeout(() => { if (state.showPinyin && state.bookHasRuby) toast(t("pinyinNativeRuby")); }, 800);
     forceRebuild();
   }).catch(() => {
     e.target.checked = false;

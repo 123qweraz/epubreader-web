@@ -43,6 +43,7 @@ function pyAnnotateNode(node) {
     const pys = window.pinyinPro.pinyin(seg, { type: "array" });
     for (let k = 0; k < seg.length; k++) {
       const rb = doc.createElement("ruby");
+      rb.className = "py";   /* 外挂标记: 注入样式只作用于 ruby.py, 书籍原生注音不受连带影响 */
       rb.textContent = seg[k];
       const rt = doc.createElement("rt");
       rt.textContent = pys[k] || "";

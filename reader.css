@@ -137,6 +137,7 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .themeChips { display: flex; gap: 6px; flex: 1; align-items: center; }
 .themeChip { flex: 1; padding: 6px 8px; font-size: var(--fs-xs); background: var(--button); white-space: nowrap; border-radius: var(--r-sm); }
 .settingLabel { flex: 0 0 auto; }
+.settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .settingRow input[type="range"] { flex: 1; accent-color: var(--accent); min-width: 0; }
 .stepBtn { flex: 0 0 auto; padding: 3px 9px; font-size: 13px; line-height: 1.4; font-variant-numeric: tabular-nums; }

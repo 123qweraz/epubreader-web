@@ -100,18 +100,19 @@ try {
 window.alert = m => console.warn("[alert-suppressed]", String(m).slice(0, 120));
 window.confirm = () => false;
 window.prompt = () => null;
-window.__buildEpub = (title, padTo = 0) => {
+window.__buildEpub = (title, padTo = 0, opts = {}) => {
   /* 填充必须放进 ZIP 条目内容内部: 尾部补零会把 EOCD 推出解析器 64K 扫描窗; 两遍构造精确到指定字节 */
   const enc = new TextEncoder();
   /* 1x1 红色PNG, 作为EPUB封面走 properties=cover-image 提取链路 */
   const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
+  const rubyPara = opts.ruby ? '<p>注音前后文本<ruby>漢字<rt>hàn zì</rt></ruby>注音后文本</p>' : "";
   const mk = padChars => {
   const files = [
     ["mimetype", "application/epub+zip"],
     ["META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
     ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + title + '</dc:title><dc:identifier id="uid">urn:uuid:' + title + '</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover-img" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="c1"/></spine></package>'],
     ["OEBPS/nav.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">第一章 测试章</a></li></ol></nav></body></html>'],
-    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1><p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1 id="anchor-one">第一章 测试章</h1>' + rubyPara + '<p>' + "正文内容用于滚动。".repeat(80) + "x".repeat(padChars) + '</p></body></html>'],
     ["OEBPS/cover.png", png]
   ].map(([n, s]) => [n, typeof s === "string" ? enc.encode(s) : s]);
   const chunks = [], centrals = [];
@@ -155,7 +156,7 @@ window.__buildEpub = (title, padTo = 0) => {
 
   /* ---- 1. 静态结构 ---- */
   ok(await evalJs(`!!document.querySelector(".setTabs") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput") && document.getElementById("exportData").closest("#settingsPanel") !== null`), "设置面板分页含备份页导出/导入");
-  ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 3 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden`), "三分页结构且默认外观页, 旧菜单已移除");
+  ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 4 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="advanced"]').hidden && !!document.getElementById("pinyinToggle").closest('.setPage[data-page="advanced"]')`), "四分页结构且默认外观页, 拼音开关在高级页, 旧菜单已移除");
   ok(await evalJs(`!!document.getElementById("editShelfBtn") && document.getElementById("shelfEditBtns").hidden && !document.getElementById("shelfIdleBtns").hidden`), "编辑按钮存在且默认非编辑态");
   ok(await evalJs(`document.getElementById("fileMenu") === null && document.getElementById("menuBtn") === null`), "阅读侧三点菜单保持移除");
   ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && !!document.getElementById("closeBookBtn").querySelector("svg")`), "工具栏✕关闭按钮初始隐藏(svg图标)");
@@ -234,6 +235,40 @@ window.__buildEpub = (title, padTo = 0) => {
 }))()
 `);
   ok(coverChk.img && coverChk.stored, "EPUB封面经cover-image提取, 卡片显示且Blob已入meta库");
+
+  /* ---- 6b. 原生注音共存 + 外挂注音会话级 ---- */
+  await evalJs(`openBookFile(window.__buildEpub("注音测试书", 0, { ruby: true }))`);
+  await sleep(900);
+  const r1 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const rubies = [...d.querySelectorAll("ruby")];
+    return { native: rubies.length > 0 && rubies.every(r => !r.classList.contains("py")), flag: state.bookHasRuby };
+  })()`);
+  ok(r1.native && r1.flag, "EPUB原生注音保留显示且书级标志置位");
+  await evalJs(`document.getElementById("pinyinToggle").click()`);
+  await sleep(1500);
+  const r2 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const nested = [...d.querySelectorAll("ruby:not(.py) ruby")].length;
+    return {
+      nativeKept: d.querySelectorAll("ruby:not(.py)").length > 0 && nested === 0,
+      ext: d.querySelectorAll("ruby.py").length,
+      warmed: localStorage.getItem("pinyinWarmed") === "1",
+      noPersist: localStorage.getItem("showPinyin") === null,
+      toastShown: document.getElementById("toast").classList.contains("show"),
+      rawMsg: document.querySelector("#toast .toastMsg")?.textContent || "",
+      tip: document.querySelector("#toast .toastMsg")?.textContent === t("pinyinNativeRuby")
+    };
+  })()`);
+  ok(r2.nativeKept && r2.ext > 0, `外挂注音带py类(${r2.ext}个)且不嵌套原生ruby`);
+  ok(r2.warmed && r2.noPersist, "词典预热标记写入且开关状态不持久化");
+  ok(r2.tip, "自带注音提醒toast出现");
+  await evalJs(`document.getElementById("pinyinToggle").click()`);
+  await sleep(500);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "注音测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
   ok(await evalJs(`document.querySelector("#shelfList .shelfItem").getAttribute("role")==="button" && document.querySelector("#shelfList .shelfItem").tabIndex===0 && document.querySelector("#shelfList .shelfDel").tagName==="BUTTON"`), "书架条目为 div[role=button]+真button删除键");
 
   /* 删除唯一一本书会让书架整体隐藏(既有行为), 头部坐标须在点击前捕获 */

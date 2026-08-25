@@ -34,6 +34,7 @@
       <button class="setTab active" role="tab" aria-selected="true" data-tab="appearance" data-i18n="tabAppearance">外观</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="layout" data-i18n="tabLayout">排版</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="backup" data-i18n="tabBackup">备份</button>
+      <button class="setTab" role="tab" aria-selected="false" data-tab="advanced" data-i18n="tabAdvanced">高级</button>
       <button id="pinSettings" title="固定设置面板" aria-label="固定/浮动设置面板" aria-pressed="false" data-i18n-title="pinTip" data-i18n-aria="pinAria"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3.5 3.5H6.5L10 10z"/><line x1="12" y1="13.5" x2="12" y2="20"/><line x1="7" y1="20" x2="17" y2="20"/></svg></button>
     </div>
     <div class="setPages">
@@ -118,6 +119,17 @@
       <button id="importData" class="textBtn" data-i18n="importData">导入阅读数据</button>
     </div>
     </div>
+    <div class="setPage" data-page="advanced" hidden>
+    <div class="settingSection" data-i18n="secAdvanced">高级功能</div>
+    <div class="settingRow">
+      <label class="switch" title="为无注音的汉字外挂拼音标注；会话级开关，重启应用后需重新开启" data-i18n-title="pinyinTip">
+        <input id="pinyinToggle" type="checkbox" aria-label="拼音标注" data-i18n-aria="pinyinAria">
+        <span class="switchTrack"><span class="switchThumb"></span></span>
+      </label>
+      <span class="settingLabel" data-i18n="pinyinLabel">拼音标注</span>
+    </div>
+    <div class="settingHint" data-i18n="pinyinSessionTip">外挂注音不影响书籍自带注音的显示；开启状态不做持久化，每次打开应用需重新开启。</div>
+    </div>
     <div class="setPage" data-page="layout" hidden>
     <div class="settingSection" data-i18n="secType">排版</div>
     <div class="settingRow">
@@ -147,13 +159,6 @@
         <span class="switchTrack"><span class="switchThumb"></span></span>
       </label>
       <span class="settingLabel" data-i18n="bookFontLabel">书籍字体优先</span>
-    </div>
-    <div class="settingRow">
-      <label class="switch" title="在汉字上方标注拼音；首次开启需联网加载注音库，之后离线可用" data-i18n-title="pinyinTip">
-        <input id="pinyinToggle" type="checkbox" aria-label="拼音标注" data-i18n-aria="pinyinAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="pinyinLabel">拼音标注</span>
     </div>
     <div class="settingSection" data-i18n="secWidth">正文宽度</div>
     <div class="settingRow">
