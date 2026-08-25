@@ -72,6 +72,19 @@ function pyConvertNativeRt(doc) {
     if (r && r !== txt) rt.textContent = r;
   }
 }
+/* 纯拼音模式: 原生ruby(含rt注音的汉字)整体替换为拼音span, 与正文替换风格一致 */
+function pyReplaceNativeRuby(doc) {
+  for (const rb of [...doc.querySelectorAll("ruby:not(.py)")]) {
+    const base = rb.querySelector("rb")?.textContent || rb.childNodes[0]?.textContent || "";
+    if (!HAN_RE.test(base)) continue;
+    let pys;
+    try { pys = window.pinyinPro.pinyin(base, { type: "array" }); } catch { continue; }
+    const sp = doc.createElement("span");
+    sp.className = "pyRep";
+    sp.textContent = pys.join(" ");
+    rb.replaceWith(sp);
+  }
+}
 /* 注音粒度参数: 小目标同步直注 / 单块上限 / 观察器邻域(纵向px, 横向%视宽) / 批预算 */
 const PY_SMALL = 20000, PY_CAP = 80000, PY_LOOK_V = "1500px", PY_LOOK_H = "60%";
 const PY_BATCH_MS = 12, PY_BATCH_CHARS = 1200, PY_SETTLE_MS = 150;
@@ -113,6 +126,13 @@ function pyAnnotateNode(node) {
         rb.appendChild(rt);
         frag.appendChild(rb);
       }
+    } else if (pyMode === "pinyinOnly") {
+      /* 纯拼音替换: 整段汉字直接替换为空格分隔音译文本(可读性实验) */
+      const pys = window.pinyinPro.pinyin(seg, { type: "array" });
+      const sp = doc.createElement("span");
+      sp.className = "pyRep";
+      sp.textContent = pys.join(" ");
+      frag.appendChild(sp);
     } else {
       /* romaji: 拄音两字符合用一个ruby, 其余逐字符 */
       for (let k = 0; k < seg.length;) {
@@ -222,29 +242,48 @@ function pySetupLazy(doc, targets, counts) {
     io.observe(targets[i]);
   }
 }
+/* 单块超上限拆分: 野生整章单文件书(数百KB)只有一个目标块, 直接放弃会整章漏注;
+   按子元素递归炸开成多块, 交给IO懒注音机制渐进处理 */
+function pyExplodeTarget(el) {
+  let els = [el];
+  for (let guard = 0; guard < 12; guard++) {
+    let changed = false;
+    const out = [];
+    for (const t of els) {
+      if (pyCountHan(t) > PY_CAP && t.children.length) {
+        for (const k of t.children) if (pyCountHan(k)) out.push(k);
+        changed = true;
+      } else out.push(t);
+    }
+    els = out;
+    if (!changed || els.length > 6000) break;
+  }
+  return els;
+}
 /* 派发: 总字数低于阈值全量直注(覆盖日常章节); 否则多块结构走IO懒注音 */
 function pyDispatch(doc) {
   if (!doc?.body) return;
   if (pyMode === "romaji") {
     /* romaji 不依赖词典库: 书内假名furigana先转罗马音, 再对裸假名外挂ruby */
     pyConvertNativeRt(doc);
-    const targets = collectPyTargets(doc);
-    let total = 0;
-    const counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; });
-    if (total <= PY_SMALL) { for (const el of targets) pyAnnotateRootSync(doc, el); return; }
-    if (targets.length === 1 && total > PY_CAP) { toast(t("pinyinTooLong")); return; }
-    pySetupLazy(doc, targets, counts);
-    return;
+  } else if (pyMode === "pinyinOnly") {
+    /* 纯拼音: 原生ruby汉字一并替换, 保持全文风格统一 */
+    pyReplaceNativeRuby(doc);
+  } else if (!window.pinyinPro) return;
+  let targets = collectPyTargets(doc);
+  let counts, total = 0;
+  const recount = () => { total = 0; counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; }); };
+  recount();
+  if (!total) return;
+  /* 任一目标块超上限(野生书整章单文件/整书模式大章节)都按子元素递归拆分, 交给IO懒注音渐进处理 */
+  if (targets.some(el => pyCountHan(el) > PY_CAP)) {
+    targets = targets.flatMap(t => pyCountHan(t) > PY_CAP ? pyExplodeTarget(t) : [t]);
+    recount();
   }
-  if (!window.pinyinPro) return;
-  const targets = collectPyTargets(doc);
-  let total = 0;
-  const counts = targets.map(el => { const c = pyCountHan(el); total += c; return c; });
   if (total <= PY_SMALL) {
     for (const el of targets) pyAnnotateRootSync(doc, el);
     return;
   }
-  if (targets.length === 1 && total > PY_CAP) { toast(t("pinyinTooLong")); return; }
   pySetupLazy(doc, targets, counts);
 }
 /* 阅读器位移打点(滚动事件与翻页transform共用): 泵的settle门控依据 */

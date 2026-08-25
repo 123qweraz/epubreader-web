@@ -145,6 +145,8 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 .segCtl { display: flex; gap: 2px; background: var(--button); padding: 2px; border-radius: var(--r-sm); }
 .segCtl button { flex: 1; padding: 5px 10px; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; border-radius: calc(var(--r-sm) - 1px); }
 .segCtl button.active { background: var(--accent); color: var(--bg); }
+/* 纯拼音替换文本: 与正文同字号渲染, 稍降不透明度提示为音译 */
+.pyRep { opacity: .92; }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }

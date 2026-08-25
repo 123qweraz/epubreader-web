@@ -342,6 +342,32 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "日语测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6b-3. 纯拼音替换正文 ---- */
+  await evalJs(`openBookFile(window.__buildEpub("纯拼测试书"))`);
+  await sleep(900);
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="pinyinOnly"]').click()`);
+  await sleep(1800);
+  const rp = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const reps = [...d.querySelectorAll(".pyRep")];
+    const toneRe = /^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü\\s]+$/i;
+    return {
+      n: reps.length,
+      allLatin: reps.every(s => toneRe.test(s.textContent || "")),
+      sample: reps.slice(0, 3).map(s => s.textContent),
+      noRubyPy: d.querySelectorAll("ruby.py").length === 0,
+      noHanLeft: !/[\\u4e00-\\u9fff]/.test(d.body.textContent || "")
+    };
+  })()`);
+  ok(rp.n >= 5 && rp.allLatin && rp.noHanLeft, `纯拼音替换生效(${rp.n}段全音译: ${rp.sample.join(" | ").slice(0, 60)}…)`);
+  ok(rp.noRubyPy, "纯拼音模式不产生叠加ruby");
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="off"]').click()`);
+  await sleep(400);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "纯拼测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
   const openWild = async (buildExpr, title, msg) => {
     await evalJs(`openBookFile(${buildExpr})`);
