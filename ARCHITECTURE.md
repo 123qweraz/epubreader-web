@@ -37,35 +37,25 @@ Blob/File、MessageChannel（宏任务让出，后台标签不被钳制）、DOM
 ## 三、现状地图
 
 ```
-index.html   212 行   UI 骨架 + 三条脚本链 + 内联 SW 版本握手
-reader.js   2429 行   全部核心逻辑（161 个函数）★ 单文件巨石，见下方职责域分布
-i18n.js      156 行   翻译表
-pinyin.js    166 行   注音调度引擎（独立于核心，三触点: pyDispatch/pyMarkMove/pyReset）
-sw.js         78 行   预缓存 SHELL 清单 + 缓存策略
+index.html   252 行   UI 骨架 + 脚本链 + 内联 SW 版本握手
+engine.js    259 行   格式解析引擎(纯函数层): ZIP/CRC32/路径工具/XML解析 + EPUB(container/OPF/nav/NCX/封面) + TXT(编码/分章)
+pager.js     309 行   排版引擎: 翻页(CSS columns)+滚动双模式/虚拟化/触摸滚轮手势/沉浸模式/模式切换(私有状态, 函数API对外)
+reader.js   2177 行   UI 编排与渲染管线(state 单点/存储/书架/搜索/渲染/主题/设置绑定)
+i18n.js      172 行   翻译表
+pinyin.js    166 行   外挂注音调度引擎(独立于核心, 三触点: pyDispatch/pyMarkMove/pyReset)
+sw.js         80 行   预缓存 SHELL 清单 + 缓存策略
 vendor/             pinyin-pro.min.js
+tests/smoke.mjs 497 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 59 项断言)
 ```
 
-### reader.js 职责域分布（行号约数，拆分前先重新核对）
+### 脚本链与依赖契约
 
-| 区域 | 行号 | 内容 |
-|---|---|---|
-| 基础工具 + ZIP | L1-90 | `$`、CRC32 表、路径工具（dirname/safeDecode/resolvePath/hrefFragment）、xmlDoc/parseHtmlDoc、yieldToUi |
-| 文档清洗 + 媒体常量 | L91-110 | BOOK_CSP、LAZY_PLACEHOLDER、sanitizeDoc |
-| TXT 解析 | L111-153 | decodeTextFile、parseTxtChapters |
-| 主题基础 | L154-208 | THEMES、readerColors、hexToRgb/lum/shade |
-| **state 全局单点** | L209 | 运行时可变状态，被所有域读写——拆分的真正耦合点 |
-| 存储/书架/进度/备份 | L241-555 | IndexedDB 封装、进度保存、备份导入导出、撤销式移除 |
-| 全书搜索 | L606-784 | 扫描、命中定位指纹自纠偏、跨节点高亮包裹 |
-| 渲染管线 | L785-1100 | 开书流程、chapter-doc 构建、整书模式媒体懒解压（blob 化） |
-| 翻页 + 滚动引擎 | L1101-1460 | CSS columns 测排、翻页/滚动双模式、触摸手势、沉浸模式、滚动虚拟化同步 |
-| 导航壳 | L1438-1930 | TOC 渲染、键盘、自动播放、toast、iframe 点击代理、runAfterLoad |
-| 设置/PWA/拖放 | L2095-末尾 | 设置面板绑定、主题高级覆盖、File Handling、拖放开书 |
+`i18n.js → pinyin.js → engine.js → pager.js → reader.js`(经典脚本全局共享):
 
-### 加载技术并存现状
-
-1. 静态脚本链：`index.html` 底部按序 `i18n.js → pinyin.js → reader.js`
-2. 动态注入懒加载：`pinyin.js` 的 `ensurePinyinLib()` 运行时注入 vendor 库
-3. 内联脚本：index.html 尾部的 SW 版本握手（activate 广播 + 页面 ping）
+- **engine.js** 纯函数无状态; 运行期用 i18n 的 `t()`(仅函数体内)
+- **pager.js** 顶层仅声明无执行语句; 运行期依赖 reader 的 `state/$/t/toast/showUnit/getPageHeight/REDUCED_MOTION` 与 pinyin 的 `pyMarkMove`(契约写在文件头)
+- **reader.js** 是装配点: state 单点、DOM 绑定、启动引导都在这里; 引擎函数经全局直呼(运行期才发生, 无加载顺序风险)
+- 拆分纪律: 每拆一层 = 独立 commit + 冒烟回归 + SW SHELL 同步 + VERSION 递增
 
 ## 四、架构演进原则
 
@@ -81,8 +71,8 @@ vendor/             pinyin-pro.min.js
 
 | 触发点 | 抽出模块 | 体量 | 内容 |
 |---|---|---|---|
-| 做 encryption.xml 字体解密时 | `epub.js` | ~350 行 | ZipReader+CRC32+路径工具+xmlDoc/parseHtmlDoc+OPF/nav/NCX 解析（纯函数为主，低风险） |
-| 做 FXL 固定排版时 | `pager.js` | ~400 行 | 翻页+滚动引擎整体迁出；FXL 作为新渲染模式并入；RTL 翻页方向同批做 |
+| ✅ 已完成(2026-08, 架构升级) | `engine.js` | 259 行 | ZIP/CRC32/路径/XML + EPUB 解析 + TXT 解析 + 目录构建 + 封面提取 |
+| ✅ 已完成(2026-08, 架构升级) | `pager.js` | 309 行 | 翻页+滚动引擎整体迁出; FXL 固定排版与 RTL 翻页将并入此层 |
 | 做云备份/同步时 | `storage.js` | ~300 行 | IndexedDB/localStorage/备份导入导出 |
 | 主题系统大改时 | `theme.js` | ~250 行 | THEMES+派生色+设置绑定中的外观部分 |
 
@@ -108,5 +98,6 @@ vendor/             pinyin-pro.min.js
    数字第二参在 Firefox 会抛错（拼音 v9 事故）
 4. **潜在隐患备忘**：materializeResource 在 makeResourceUrl 失败时仍无条件摘除 data-rpath
    （.catch 吞错后清理照跑）——属健壮性缺口，下次动媒体管线时顺手加固
-5. **回归测试资产**：本仓库暂无自动化测试；历次排查用的 harness（真实 Chrome E2E、
-   拼音回归）存于会话临时目录，属一次性资产。若某功能反复出问题，考虑将其固化进仓库
+5. **回归测试资产**：`tests/smoke.mjs` 已入库（零依赖, `node tests/smoke.mjs` 直接运行,
+   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 59 项断言覆盖开书/分章/书架/编辑模式/
+   备份往返/重链接/双视图/封面提取/i18n/a11y）。凡改解析/排版/书架行为, 先跑冒烟再提交

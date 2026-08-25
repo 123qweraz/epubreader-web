@@ -1,6 +1,6 @@
 /* EPUB Reader 网页版 Service Worker: 应用外壳离线缓存
    发版时需手动递增 VERSION 以淘汰旧缓存 */
-const VERSION = "v19";
+const VERSION = "v20";
 const CACHE = `epubreader-shell-${VERSION}`;
 const SHELL = [
   "./",
@@ -10,6 +10,7 @@ const SHELL = [
   "./vendor/pinyin-pro.min.js",
   "./pinyin.js",
   "./engine.js",
+  "./pager.js",
   "./reader.js",
   "./i18n.js",
   "./icons/icon.svg",
