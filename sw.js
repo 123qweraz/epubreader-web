@@ -1,6 +1,6 @@
 /* EPUB Reader 网页版 Service Worker: 应用外壳离线缓存
    发版时需手动递增 VERSION 以淘汰旧缓存 */
-const VERSION = "v45";
+const VERSION = "v46";
 const CACHE = `epubreader-shell-${VERSION}`;
 const SHELL = [
   "./",
@@ -12,6 +12,8 @@ const SHELL = [
   "./engine.js",
   "./pager.js",
   "./reader.js",
+  "./typing.js",
+  "./mindmap.js",
   "./i18n.js",
   "./icons/icon.svg",
   "./icons/icon32.png",
