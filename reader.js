@@ -313,7 +313,7 @@ async function exportBackup() {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast(t("backupExported"));
 }
 async function importBackup(file) {
