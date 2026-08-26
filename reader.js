@@ -2194,6 +2194,7 @@ function setSettingsOpen(on) {
 function syncSettingsPinned() {
   $("pinSettings").classList.toggle("active", state.settingsPinned);
   $("pinSettings").setAttribute("aria-pressed", String(state.settingsPinned));
+  $("pinSettings").title = state.settingsPinned ? t("pinActiveTip") : t("pinTip");
   $("settingsPanel").classList.toggle("pinned", state.settingsPinned);
 }
 $("settingsBtn").onclick = e => {
