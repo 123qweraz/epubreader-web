@@ -190,6 +190,19 @@ window.__rawEpub = (title, o = {}) => {
   /* ---- 1. 静态结构 ---- */
   ok(await evalJs(`!!document.querySelector(".setTabs") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput") && document.getElementById("exportData").closest("#settingsPanel") !== null`), "设置面板分页含备份页导出/导入");
   ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 4 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="advanced"]').hidden && !!document.getElementById("annotateSeg").closest('.setPage[data-page="advanced"]')`), "四分页结构且默认外观页, 注音分段控件在高级页, 旧菜单已移除");
+  /* 打字音效开关: 默认开, 持久化 */
+  const s0 = await evalJs(`(() => {
+    const t2 = document.getElementById("typingSoundToggle");
+    return { inAdv: !!t2.closest('.setPage[data-page="advanced"]'), checked: t2.checked, st: state.typingSound };
+  })()`);
+  ok(s0.inAdv && s0.checked && s0.st, "打字音效开关在高级页且默认开启");
+  await evalJs(`document.getElementById("typingSoundToggle").click()`);
+  const s1 = await evalJs(`JSON.stringify({ checked: document.getElementById("typingSoundToggle").checked, st: state.typingSound, ls: localStorage.getItem("typingSound") })`);
+  const s1p = JSON.parse(s1);
+  ok(!s1p.checked && !s1p.st && s1p.ls === "0", "关闭打字音效: 状态与持久化同步");
+  await evalJs(`document.getElementById("typingSoundToggle").click()`);
+  const s2 = await evalJs(`localStorage.getItem("typingSound")`);
+  ok(s2 === "1", "重新开启音效并持久化");
   ok(await evalJs(`!!document.getElementById("editShelfBtn") && document.getElementById("shelfEditBtns").hidden && !document.getElementById("shelfIdleBtns").hidden`), "编辑按钮存在且默认非编辑态");
   ok(await evalJs(`document.getElementById("fileMenu") === null && document.getElementById("menuBtn") === null`), "阅读侧三点菜单保持移除");
   ok(await evalJs(`document.getElementById("closeBookBtn").hidden === true && !!document.getElementById("closeBookBtn").querySelector("svg")`), "工具栏✕关闭按钮初始隐藏(svg图标)");

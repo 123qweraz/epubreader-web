@@ -2,6 +2,34 @@
    打字驱动推进, 当前行视口锚定; 宽松错误(闪红不阻塞); Tab跳过当前token, Esc退出
    依赖运行期全局: $(reader.js) state t toast ensurePinyinLib toRomaji KANA_DIGRAPH(pinyin.js)
    safeShowUnit/rerenderReader/setReadMode(reader.js); 加载顺序: pinyin.js → typing.js → reader.js */
+/* ---------- 打字音效: WebAudio零依赖合成(正确=短促高频blip, 错误=低沉嗡声); 用户手势后惰性建ctx ---------- */
+let twAudioCtx = null;
+function twCtx() {
+  if (!twAudioCtx) {
+    try { twAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+  }
+  if (twAudioCtx.state === "suspended") twAudioCtx.resume().catch(() => {});
+  return twAudioCtx;
+}
+function twBeep(freq, dur, type = "sine", gainV = 0.05) {
+  if (!state.typingSound) return;
+  const ctx = twCtx();
+  if (!ctx || ctx.state !== "running") return;
+  try {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(gainV, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    osc.connect(g).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + dur);
+  } catch {}
+}
+const twPlayType = () => twBeep(1050 + Math.random() * 120, 0.04, "sine", 0.045);
+const twPlayErr = () => twBeep(190, 0.16, "square", 0.05);
+
 let twActive = false;
 let twState = null;
 const TW_HAN = /[\u3400-\u4dbf\u4e00-\u9fff]/;
@@ -245,12 +273,14 @@ function twFeed(key) {
   if (key === t.expect[t.got]) {
     t.got++;
     twPaintProgress(t);
+    twPlayType();
     if (t.got >= t.expect.length) {
       t.el.classList.remove("twCur");
       t.el.classList.add("twGot");
       twAdvance();
     }
   } else {
+    twPlayErr();
     t.el.classList.remove("twErr");
     void t.el.offsetWidth;
     t.el.classList.add("twErr");

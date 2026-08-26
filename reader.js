@@ -93,6 +93,8 @@ const state = {
   marker: false,
   markerOnce: false,
   markerColor: localStorage.getItem("mkColor") || "#ffe066",
+  /* 打字音效: 默认开, 持久化偏好 */
+  typingSound: localStorage.getItem("typingSound") !== "0",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -289,7 +291,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","annotate"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","annotate","typingSound"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -370,12 +372,14 @@ function restorePrefsFromStorage() {
   })();
   state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
+  state.typingSound = localStorage.getItem("typingSound") !== "0";
   syncSettingsPinned();
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
   syncViewChips();
 }
 function syncAllPrefsUI() {
+  syncTypingSound();
   $("fontFamilySel").value = state.fontFamily;
   $("bookFontToggle").checked = state.bookFontFirst;
 syncAnnotateSeg();
@@ -2393,6 +2397,16 @@ $("markerBtn").addEventListener("dblclick", () => {
   clearTimeout(mkClickTimer);
   setMarker(true, { once: false });
 });
+
+/* ---- 打字音效开关(高级功能页, 持久化偏好) ---- */
+function syncTypingSound() {
+  const t2 = $("typingSoundToggle");
+  t2.checked = state.typingSound;
+}
+$("typingSoundToggle").addEventListener("change", e => {
+  state.typingSound = e.target.checked;
+  try { localStorage.setItem("typingSound", e.target.checked ? "1" : "0"); } catch {}
+});
 /* 色板构建 */
 (function() {
   const pal = $("markerPalette");
@@ -2618,6 +2632,7 @@ $("fontFamilySel").value = state.fontFamily;
 $("verticalToggle").checked = state.vertical;
 $("bookFontToggle").checked = state.bookFontFirst;
 syncAnnotateSeg();
+syncTypingSound();
 $("contentMaxToggle").checked = state.contentLimited;
 syncContentInputs();
 syncCustomPickers();
