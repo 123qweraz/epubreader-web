@@ -1739,6 +1739,7 @@ function setAuto(on) {
   $("speedCtl").hidden = !on;
   cancelAnimationFrame(autoRafId);
   if (on) { autoLast = 0; lastAutoFlip = performance.now(); autoRafId = requestAnimationFrame(autoTick); }
+  else updateProgress();
 }
 
 function handleKey(e) {
