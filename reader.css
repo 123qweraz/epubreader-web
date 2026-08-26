@@ -104,7 +104,10 @@ body.dark .cardCover { background: linear-gradient(160deg, hsl(var(--ch, 40), 30
 .sideHeaderBtns { display: flex; gap: 2px; }
 .sideIconBtn { padding: 5px 7px; color: var(--muted); background: transparent; display: flex; align-items: center; border-radius: var(--r-sm); }
 .sideIconBtn:hover { color: var(--fg); background: var(--button); }
-.sideIconBtn.active { color: var(--accent); }
+/* 图钉样式统一(目录/设置面板同款): 激活态强调色底+反色图标, 图案清晰可见 */
+#pinSidebar, #pinSettings { padding: 5px 9px; background: transparent; display: inline-flex; align-items: center; }
+#pinSidebar:hover, #pinSettings:hover { color: var(--fg); background: var(--button); }
+#pinSidebar.active, #pinSettings.active { background: var(--accent); color: var(--bg); }
 #toc { flex: 1; overflow-y: auto; padding: 8px; min-height: 0; }
 .tocItem { display: flex; width: 100%; gap: 10px; text-align: left; background: transparent; padding: 9px 10px; color: var(--fg); align-items: baseline; }
 .tocItem:hover, .tocItem.active { background: var(--button); color: var(--fg); }
