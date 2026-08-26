@@ -74,14 +74,14 @@ function twEmitText(doc, node, jaCtx, out) {
       let j = i + 1;
       while (j < text.length && TW_LATIN_RE.test(text[j])) j++;
       const word = text.slice(i, j);
-      out.push(twMkToken(doc, word, word.toLowerCase()));
+      out.push(twMkToken(doc, word, word.toLowerCase(), word));
       frag.appendChild(out[out.length - 1].el);
       i = j; continue;
     }
     if (TW_HAN.test(ch)) {
       if (jaCtx) { plain += ch; i++; continue; }   /* 日语语境汉字无读音字典: 跳过不包 */
       flushPlain();
-      out.push(twMkToken(doc, ch, twPinyin(ch)));
+      out.push(twMkToken(doc, ch, twPinyin(ch), ch));
       frag.appendChild(out[out.length - 1].el);
       i++; continue;
     }
@@ -91,7 +91,7 @@ function twEmitText(doc, node, jaCtx, out) {
       const two = ch + kata2hira(text[i + 1] || "");
       const len = KANA_DIGRAPH[two] ? 2 : 1;
       const piece = text.slice(i, i + len);
-      out.push(twMkToken(doc, piece, toRomaji(piece)));
+      out.push(twMkToken(doc, piece, toRomaji(piece), piece));
       frag.appendChild(out[out.length - 1].el);
       i += len; continue;
     }
@@ -102,8 +102,9 @@ function twEmitText(doc, node, jaCtx, out) {
 }
 const TW_LATIN_RE = /[a-zA-Z]/;
 
-function twMkToken(doc, text, expect) {
-  /* 双层结构: twA=已打亮的源字符前缀, twB=待打(灰色); 单字中文源不可拆, 靠caret+整体变色指示 */
+function twMkToken(doc, text, expect, realExpect) {
+  /* 双层结构: twA=已打亮的源字符前缀, twB=待打(灰色); 单字中文源不可拆, 靠caret+整体变色指示
+     realExpect=真打字模式的期望字面(源文本本身), expect=拼音模式期望(读音字母) */
   const el = doc.createElement("span");
   el.className = "twTok";
   const a = doc.createElement("span");
@@ -112,7 +113,7 @@ function twMkToken(doc, text, expect) {
   b.className = "twB";
   b.textContent = text;
   el.append(a, b);
-  return { el, aEl: a, bEl: b, expect: expect || "", got: 0, src: text };
+  return { el, aEl: a, bEl: b, expect: expect || "", got: 0, src: text, realExpect: realExpect || text };
 }
 /* 闪烁光标: 指示当前输入位置 */
 let twCaret = null;
@@ -140,7 +141,7 @@ function twEmitRuby(doc, ruby, jaCtx, out) {
   if (rtText && TW_KANA.test(rtText)) expect = toRomaji(rtText);
   else if (rtText && TW_TONELESS.test(rtText)) expect = rtText.toLowerCase().replace(/\s+/g, "");
   else if (!jaCtx && TW_HAN.test(base)) expect = [...base].map(twPinyin).join("");
-  const tok = twMkToken(doc, base, expect);
+  const tok = twMkToken(doc, base, expect, base);
   out.push(tok);
   const wrap = doc.createDocumentFragment();
   wrap.appendChild(tok.el);
@@ -175,9 +176,12 @@ const TW_PICK_CSS = `
 function twFindBlock(doc, target) {
   return twState?.blocks.find(b => b.contains(target)) || null;
 }
+let twActDoc = null;
 function twEnterPick(doc) {
+  if (twActDoc === doc && twState?.phase === "pick") return;   /* 双入口(setTyping直调+runAfterLoad钩子)竞态防护 */
   twReset();
   twActive = true;
+  twActDoc = doc;
   twState = { doc, phase: "pick", allBlocks: twCollectBlocks(doc), blocks: [], bi: 0, tokens: [], idx: 0 };
   if (!doc.getElementById("twPickStyle")) {
     const st = doc.createElement("style");
@@ -244,9 +248,14 @@ function twLoadBlock(centerFirst) {
     if (usable.length) {
       st.tokens = usable;
       st.idx = 0;
+      /* 期望流: 真打字模式按源文本字面逐字符匹配(一次上屏可横跨多token) */
+      st.pos = 0;
+      st.stream = "";
+      for (const t of usable) { t.start = st.stream.length; st.stream += t.realExpect; t.end = st.stream.length; }
       twApplySpotlight(b);
       usable[0].el.classList.add("twCur");
       twPlaceCaret(usable[0]);
+      twUpdateHint();
       if (centerFirst) b.scrollIntoView({ behavior: REDUCED_MOTION ? "instant" : "smooth", block: "center" });
       else twAnchor(usable[0]);
       return;
@@ -274,6 +283,7 @@ function twFeed(key) {
     t.got++;
     twPaintProgress(t);
     twPlayType();
+    twUpdateHint();
     if (t.got >= t.expect.length) {
       t.el.classList.remove("twCur");
       t.el.classList.add("twGot");
@@ -294,6 +304,7 @@ function twSkip() {
   if (!t) return;
   t.got = t.expect.length;
   twPaintProgress(t);
+  twUpdateHint();
   t.el.classList.remove("twCur");
   t.el.classList.add("twGot");
   twAdvance();
@@ -316,6 +327,80 @@ function twPickNudge() {
   toast(t("twPickHint"));
 }
 
+/* ---------- 真打字模式: 流式匹配器 ----------
+   期望流=当前块全部token的realExpect拼接; 上屏文本逐字符推进st.pos,
+   一次上屏的长词组横跨多token时批量点亮; 错误宽松(闪当前token不阻塞) */
+function twCurTokenByPos() {
+  const st = twState;
+  if (!st || !st.tokens.length) return null;
+  return st.tokens.find(t => st.pos < t.end) || st.tokens[st.tokens.length - 1];
+}
+function twRepaintStream() {
+  const st = twState;
+  for (const t of st.tokens) {
+    const done = Math.max(0, Math.min(t.src.length, st.pos - t.start));
+    if (t.got !== done) {
+      t.got = done;
+      twPaintProgress(t);
+      t.el.classList.toggle("twGot", done >= t.src.length);
+    }
+    t.el.classList.toggle("twCur", st.pos >= t.start && st.pos < t.end);
+  }
+  const cur = twCurTokenByPos();
+  if (cur && (!twCaret?.isConnected || twCaret.previousSibling !== cur.el)) twPlaceCaret(cur);
+}
+function twFeedChunk(chunk) {
+  const st = twState;
+  if (!st || !st.tokens.length) return;
+  for (const ch of chunk) {
+    const t = twCurTokenByPos();
+    if (!t) break;
+    if (ch === st.stream[st.pos]) {
+      st.pos++;
+      twRepaintStream();
+      twPlayType();
+      if (st.pos >= st.stream.length) { twLoadBlock(); return; }
+    } else {
+      twPlayErr();
+      t.el.classList.remove("twErr");
+      void t.el.offsetWidth;
+      t.el.classList.add("twErr");
+      setTimeout(() => t.el.classList.remove("twErr"), 220);
+    }
+  }
+  twUpdateHint();
+}
+function twSkipReal() {
+  const st = twState;
+  if (!st || !st.tokens.length) return;
+  const t = twCurTokenByPos();
+  if (!t) return;
+  st.pos = t.end;
+  twRepaintStream();
+  twUpdateHint();
+  if (st.pos >= st.stream.length) twLoadBlock();
+}
+
+/* 输入条读音提示: 拼音模式显示剩余期望字母, 真打字模式显示当前字读音参考 */
+function twUpdateHint() {
+  const el = document.getElementById("typingHint");
+  if (!el) return;
+  const st = twState;
+  if (!st || st.phase === "pick" || !st.tokens.length) { el.textContent = ""; return; }
+  if (state.twReal) {
+    const t = twCurTokenByPos();
+    if (!t) { el.textContent = t("twBarHint"); return; }
+    let hint = "";
+    const srcPart = t.src.slice(0, 4);
+    if (TW_KANA.test(srcPart)) hint = toRomaji(srcPart);
+    else if (TW_HAN.test(srcPart)) hint = [...srcPart].map(twPinyin).join(" ");
+    el.textContent = hint ? ` ${hint}` : "";
+  } else {
+    const t = st.tokens[st.idx];
+    el.textContent = t ? ` ${t.expect.slice(t.got)}` : "";
+  }
+}
+
 function twReset() {
   const doc = twState?.doc;
   if (doc) {
@@ -324,5 +409,6 @@ function twReset() {
     doc.querySelectorAll?.(".twGrayBlock").forEach(el => el.classList.remove("twGrayBlock"));
   }
   twActive = false;
+  twActDoc = null;
   twState = null;   /* span烙在DOM里, 关闭/换章由重渲染自然带走(与注音同策略) */
 }

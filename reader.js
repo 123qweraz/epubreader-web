@@ -1,6 +1,15 @@
 /* Simple EPUB Reader — 纯本地零依赖网页版阅读器(EPUB/TXT)。
    格式解析层在 engine.js(ZIP/XML/EPUB/TXT), 本文件是 UI 编排与渲染管线。 */
 const $ = (id) => document.getElementById(id);
+/* 防御式绑定: 资产混载/解析时序导致元素暂缺时, 延迟到DOMContentLoaded重试, 避免单点异常中断后续全部初始化 */
+function bindEl(id, fn) {
+  const el = document.getElementById(id);
+  if (el) { fn(el); return; }
+  const retry = () => { const e2 = document.getElementById(id); if (e2) fn(e2); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", retry);
+  else setTimeout(retry, 0);
+}
+
 
 const BOOK_CSP = `default-src 'none'; img-src blob: data:; style-src blob: data: 'unsafe-inline'; font-src blob: data:; media-src blob: data:; form-action 'none'`;
 const LAZY_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -95,6 +104,8 @@ const state = {
   markerColor: localStorage.getItem("mkColor") || "#ffe066",
   /* 打字音效: 默认开, 持久化偏好 */
   typingSound: localStorage.getItem("typingSound") !== "0",
+  /* 中文打字方式: false=拼音对照(默认) / true=输入法真打(上屏字面对比) */
+  twReal: localStorage.getItem("twReal") === "1",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -119,7 +130,8 @@ const state = {
     if (localStorage.getItem("contentLimited") != null) return localStorage.getItem("contentLimited") === "1";
     return true;
   })(),
-  settingsPinned: localStorage.getItem("settingsPinned") === "1"
+  settingsPinned: localStorage.getItem("settingsPinned") === "1",
+  sidebarPinned: localStorage.getItem("sidebarPinned") === "1"
 };
 
 /* 动态切换的内联图标(静态图标直接写在HTML里) */
@@ -291,7 +303,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","autoSpeed","contentMax","contentLimited","annotate","typingSound"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","contentMax","contentLimited","annotate","typingSound","twReal"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -373,13 +385,15 @@ function restorePrefsFromStorage() {
   state.contentLimited = localStorage.getItem("contentLimited") != null ? localStorage.getItem("contentLimited") === "1" : true;
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
   state.typingSound = localStorage.getItem("typingSound") !== "0";
-  syncSettingsPinned();
+  state.twReal = localStorage.getItem("twReal") === "1";
+  syncPin("pinSettings", state.settingsPinned, "settingsPanel");
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
   syncViewChips();
 }
 function syncAllPrefsUI() {
   syncTypingSound();
+  syncTwModeSeg();
   $("fontFamilySel").value = state.fontFamily;
   $("bookFontToggle").checked = state.bookFontFirst;
 syncAnnotateSeg();
@@ -394,7 +408,7 @@ if (localStorage.getItem("pinyinWarmed") === "1") ensurePinyinLib().catch(() => 
   syncLineHeight();
   syncContentMax();
   syncCustomPickers();
-  syncSettingsPinned();
+  syncPin("pinSettings", state.settingsPinned, "settingsPanel");
   applySide();
   applyTheme();
   applyI18n();
@@ -683,6 +697,9 @@ async function renderShelf() {
 
 function closeBook() {
   setAuto(false);
+  /* 会话级模式随书关闭复位(打字/马克笔), 避免残留状态吞掉后续快捷键 */
+  if (state.typing) { state.typing = false; twReset(); syncTypingBtn(); $("typingBar").hidden = true; }
+  if (state.marker) { state.marker = false; state.markerOnce = false; syncMarkerUI(); }
   flushProgress();
   state.urls.forEach(u => URL.revokeObjectURL(u));
   state.urls.clear();
@@ -1605,7 +1622,7 @@ function toast(msg, opts = {}) {
 }
 
 function closeOverlays() {
-  $("sidebar").classList.remove("open");
+  if (!state.sidebarPinned) $("sidebar").classList.remove("open");
   if (!state.settingsPinned) setSettingsOpen(false);
   syncOverlayAria();
 }
@@ -1750,7 +1767,7 @@ function setAuto(on) {
 function handleKey(e) {
   const el = e.target;
   if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) {
-    if (e.key === "Escape") { el.blur?.(); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
+    if (e.key === "Escape") { el.blur?.(); if (!state.sidebarPinned) $("sidebar").classList.remove("open"); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
     return;
   }
   /* 马克笔模式下Esc退出(打字模式优先消费自己的Esc) */
@@ -1758,8 +1775,14 @@ function handleKey(e) {
   /* 打字模式优先: 字母键喂入引擎(输入条未聚焦时的兜底路径); 空格禁用(避免误触翻段); Esc退出, Tab跳词 */
   if (state.typing) {
     if (e.key === "Escape") { setTyping(false); return; }
-    if (e.key === "Tab") { e.preventDefault(); twSkip(); return; }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (state.twReal) twSkipReal(); else twSkip();
+      return;
+    }
     if (e.key === " ") { e.preventDefault(); return; }
+    /* 真打字模式: 字母属于IME组合, 不走keydown兜底(由input上屏事件处理) */
+    if (state.twReal) return;
     if (/^[a-zA-Z]$/.test(e.key)) {
       e.preventDefault();
       /* 拾取态尚未点选段落: 提示而非静默吞掉 */
@@ -2008,16 +2031,18 @@ $("closeBookBtn").onclick = () => closeBook();
 $("tocBtn").onclick = () => {
   const sb = $("sidebar");
   if (sb.classList.contains("open")) { sb.classList.remove("open"); return; }
-  switchSideTab("toc");
+  const last = localStorage.getItem("sidebarLastTab") || "toc";
+  switchSideTab(last);
   sb.classList.add("open");
   scrollTocToCurrent();
 };
 $("searchBtn").onclick = () => {
   const sb = $("sidebar");
   if (sb.classList.contains("open") && !$("searchPage").hidden) { sb.classList.remove("open"); return; }
-  switchSideTab("search");
+  const last = localStorage.getItem("sidebarLastTab") || "search";
+  switchSideTab(last);
   sb.classList.add("open");
-  $("searchInput").focus();
+  if (!$("searchPage").hidden) $("searchInput").focus();
 };
 /* 弹层开合状态同步到触发按钮的 aria-expanded(供屏幕阅读器播报) */
 function syncOverlayAria() {
@@ -2034,6 +2059,7 @@ function switchSideTab(tab) {
   $("searchPage").hidden = tab !== "search";
   $("mindMapPage").hidden = tab !== "mindmap";
   if (tab === "mindmap") renderMindMap();   /* 视图位置已按书记忆, 切换不重置 */
+  try { localStorage.setItem("sidebarLastTab", tab); } catch {}
   syncOverlayAria();
 }
 $("tabToc").onclick = () => switchSideTab("toc");
@@ -2064,7 +2090,19 @@ sideCloseBtn.onclick = (e) => {
   $("sidebar").classList.remove("open", "maximized");
   applySideMax();
 };
+function syncPin(btnId, pinned, panelId) {
+  $(btnId).classList.toggle("active", pinned);
+  $(btnId).setAttribute("aria-pressed", String(pinned));
+  $(btnId).title = pinned ? t("pinActiveTip") : t("pinTip");
+  $(panelId).classList.toggle("pinned", pinned);
+}
+$("pinSidebar").onclick = () => {
+  state.sidebarPinned = !state.sidebarPinned;
+  try { localStorage.setItem("sidebarPinned", state.sidebarPinned ? "1" : "0"); } catch {}
+  syncPin("pinSidebar", state.sidebarPinned, "sidebar");
+};
 applySideMax();
+syncPin("pinSidebar", state.sidebarPinned, "sidebar");
 
 /* ---- 侧边栏拖拽调宽 ---- */
 (function() {
@@ -2200,12 +2238,6 @@ function setSettingsOpen(on) {
   $("settingsPanel").classList.toggle("open", on);
   syncOverlayAria();
 }
-function syncSettingsPinned() {
-  $("pinSettings").classList.toggle("active", state.settingsPinned);
-  $("pinSettings").setAttribute("aria-pressed", String(state.settingsPinned));
-  $("pinSettings").title = state.settingsPinned ? t("pinActiveTip") : t("pinTip");
-  $("settingsPanel").classList.toggle("pinned", state.settingsPinned);
-}
 $("settingsBtn").onclick = e => {
   e.stopPropagation();
   setSettingsOpen(!$("settingsPanel").classList.contains("open"));
@@ -2213,7 +2245,7 @@ $("settingsBtn").onclick = e => {
 $("pinSettings").onclick = () => {
   state.settingsPinned = !state.settingsPinned;
   try { localStorage.setItem("settingsPinned", state.settingsPinned ? "1" : "0"); } catch {}
-  syncSettingsPinned();
+  syncPin("pinSettings", state.settingsPinned, "settingsPanel");
 };
 $("sideReset").onclick = () => {
   state.contentLimited = true; state.contentMax = 700; state.lineHeight = 1.75; state.fontFamily = "serif"; state.fontSize = 18; state.bookFontFirst = true;
@@ -2278,7 +2310,7 @@ function setAnnotate(mode, btn) {
     toast(t("pinyinLoadFail"));
   });
 }
-function forceRebuildForAnnotate() {
+function forceRebuildReader() {
   if (state.renderWhole && state.wholeLoaded) {
     state.wholeLoaded = false;
     safeShowUnit(state.unitIdx, { restoreRatio: true });
@@ -2286,6 +2318,7 @@ function forceRebuildForAnnotate() {
     rerenderReader();
   }
 }
+function forceRebuildForAnnotate() { forceRebuildReader(); }
 $("annotateSeg").addEventListener("click", e => {
   const btn = e.target.closest("[data-ann]");
   if (btn) setAnnotate(btn.dataset.ann, btn);
@@ -2320,14 +2353,24 @@ function setTyping(on) {
     twReset();
     syncTypingBtn();
     $("typingBar").hidden = true;
-    rerenderReader();
+    forceRebuildReader();   /* 整书模式下restyle不清DOM, 必须真重建才能带走打字span */
   }
 }
 $("typingBtn").onclick = () => setTyping(!state.typing);
 /* 输入条喂字: 兼容直接字母与中文IME拼音组合(组合中逐字符实时喂, 提交后清空缓冲) */
-$("typingInput").addEventListener("input", e => {
+bindEl("typingInput", el => el.addEventListener("input", e => {
   const inp = e.target;
   const v = inp.value;
+  /* 真打字模式: 只消费已上屏文本(组合中的原始拼音会误配); 提交后清空缓冲 */
+  window.__lastBranch = state.twReal ? "real" : "pinyin";
+  if (state.twReal) {
+    if (!e.isComposing && twState?.phase !== "pick") {
+      const chunk = v.slice(twProcIdx).replace(/\s+/g, "");
+      if (chunk) twFeedChunk(chunk);
+    }
+    if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
+    return;
+  }
   twProcIdx = Math.min(twProcIdx, v.length);
   while (twProcIdx < v.length) {
     const ch = v[twProcIdx].toLowerCase();
@@ -2338,7 +2381,7 @@ $("typingInput").addEventListener("input", e => {
     twProcIdx++;
   }
   if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
-});
+  }));
 $("typingInput").addEventListener("keydown", e => {
   /* 输入条内Enter/Tab/Esc统一处理, 防止落入表单默认行为 */
   if (e.key === "Escape") { setTyping(false); e.preventDefault(); }
@@ -2355,13 +2398,6 @@ $("typingInput").addEventListener("blur", () => {
   }, 180);
 });
 
-$("typingInput").addEventListener("blur", () => {
-  if (!state.typing) return;
-  clearTimeout(twBlurTimer);
-  twBlurTimer = setTimeout(() => {
-    if (state.typing && document.activeElement !== $("typingInput")) $("typingInput").focus({ preventScroll: true });
-  }, 180);
-});
 
 /* ---- 马克笔高亮: 划词标记 → 文本锚点持久化 → 导图子节点联动 ---- */
 const MK_COLORS = ["#ffe066", "#a5f3a1", "#9bd7ff", "#ffb3d9", "#ffd39b"];
@@ -2403,10 +2439,26 @@ function syncTypingSound() {
   const t2 = $("typingSoundToggle");
   t2.checked = state.typingSound;
 }
-$("typingSoundToggle").addEventListener("change", e => {
+bindEl("typingSoundToggle", el => el.addEventListener("change", e => {
   state.typingSound = e.target.checked;
   try { localStorage.setItem("typingSound", e.target.checked ? "1" : "0"); } catch {}
-});
+}));
+
+/* ---- 中文打字方式: 拼音对照 / 输入法真打 ---- */
+function syncTwModeSeg() {
+  document.querySelectorAll("#twModeSeg [data-twmode]").forEach(btn => {
+    const on = (btn.dataset.twmode === "real") === !!state.twReal;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
+  });
+}
+bindEl("twModeSeg", el => el.addEventListener("click", e => {
+  const btn = e.target.closest("[data-twmode]");
+  if (!btn) return;
+  state.twReal = btn.dataset.twmode === "real";
+  try { localStorage.setItem("twReal", state.twReal ? "1" : "0"); } catch {}
+  syncTwModeSeg();
+}));
 /* 色板构建 */
 (function() {
   const pal = $("markerPalette");
@@ -2574,7 +2626,7 @@ $("main").addEventListener("click", closeOverlays);
 
 /* 键盘兜底: 焦点在父页(工具栏/书架/侧栏)时按键也能驱动阅读; 焦点在iframe内则由其文档上的handleKey接管
    (键盘事件不跨文档派发, 两处监听不会重复触发); handleKey 自带输入框守卫 */
-document.addEventListener("keydown", e => { if (state.book) handleKey(e); });
+/* 键盘兜底由 window.addEventListener("keydown", handleKey) 统一承担(冒泡路径覆盖document), 避免双触发 */
 
 /* ---------- 书架编辑模式与设置分页绑定 ---------- */
 $("editShelfBtn").onclick = () => setShelfEditMode(true);
@@ -2598,6 +2650,7 @@ for (const b of document.querySelectorAll(".setTab")) {
   };
 }
 
+/* 全局键盘兜底: 唯一入口挂window(冒泡已覆盖document); 书架编辑模式的Esc也依赖它 */
 window.addEventListener("keydown", handleKey);
 
 function dragHover(e) { e.preventDefault(); $("dropOverlay").hidden = false; }
@@ -2633,6 +2686,7 @@ $("verticalToggle").checked = state.vertical;
 $("bookFontToggle").checked = state.bookFontFirst;
 syncAnnotateSeg();
 syncTypingSound();
+syncTwModeSeg();
 $("contentMaxToggle").checked = state.contentLimited;
 syncContentInputs();
 syncCustomPickers();

@@ -191,6 +191,19 @@ window.__rawEpub = (title, o = {}) => {
   ok(await evalJs(`!!document.querySelector(".setTabs") && !!document.getElementById("exportData") && !!document.getElementById("importData") && !!document.getElementById("backupInput") && document.getElementById("exportData").closest("#settingsPanel") !== null`), "设置面板分页含备份页导出/导入");
   ok(await evalJs(`document.querySelector(".backupRow") === null && document.getElementById("menuShelfBtn") === null && document.getElementById("shelfMenu") === null && [...document.querySelectorAll(".setPage")].length === 4 && !document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden && document.querySelector('.setPage[data-page="advanced"]').hidden && !!document.getElementById("annotateSeg").closest('.setPage[data-page="advanced"]')`), "四分页结构且默认外观页, 注音分段控件在高级页, 旧菜单已移除");
   /* 打字音效开关: 默认开, 持久化 */
+  const snd0 = await evalJs(`(() => {
+    const t2 = document.getElementById("typingSoundToggle");
+    return { inAdv: !!t2.closest('.setPage[data-page="advanced"]'), checked: t2.checked, st: state.typingSound };
+  })()`);
+  ok(snd0.inAdv && snd0.checked && snd0.st, "打字音效开关在高级页且默认开启");
+  await evalJs(`document.getElementById("typingSoundToggle").click()`);
+  const snd1 = await evalJs(`JSON.stringify({ checked: document.getElementById("typingSoundToggle").checked, st: state.typingSound, ls: localStorage.getItem("typingSound") })`);
+  const snd1p = JSON.parse(snd1);
+  ok(!snd1p.checked && !snd1p.st && snd1p.ls === "0", "关闭打字音效: 状态与持久化同步");
+  await evalJs(`document.getElementById("typingSoundToggle").click()`);
+  const snd2 = await evalJs(`localStorage.getItem("typingSound")`);
+  ok(snd2 === "1", "重新开启音效并持久化");
+  /* 打字音效开关: 默认开, 持久化 */
   const s0 = await evalJs(`(() => {
     const t2 = document.getElementById("typingSoundToggle");
     return { inAdv: !!t2.closest('.setPage[data-page="advanced"]'), checked: t2.checked, st: state.typingSound };
@@ -477,6 +490,48 @@ window.__rawEpub = (title, o = {}) => {
   await sleep(600);
   const t6 = await evalJs(`!document.getElementById("typingBtn").classList.contains("active") && state.typing === false`);
   ok(t6, "Esc退出打字模式并还原渲染");
+
+  /* ---- 输入法真打模式: 上屏字面流式比对, 长词组横跨多token ---- */
+  await evalJs(`document.querySelector('#twModeSeg [data-twmode="real"]').click()`);
+  const twr0 = await evalJs(`JSON.stringify({ st: state.twReal, ls: localStorage.getItem("twReal"), act: document.querySelector('#twModeSeg [data-twmode="real"]').classList.contains("active") })`);
+  const twr0p = JSON.parse(twr0);
+  ok(twr0p.st && twr0p.ls === "1" && twr0p.act, "真打模式切换生效并持久化");
+  await evalJs(`document.getElementById("typingBtn").click()`);
+  await sleep(900);
+  await evalJs(`document.getElementById("bookFrame").contentDocument.querySelector("p").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+  await sleep(300);
+  await evalJs(`(() => {
+    const inp = document.getElementById("typingInput");
+    inp.value = "The quick";
+    inp.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  })()`);
+  const twr1 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { done: d.querySelectorAll(".twTok.twGot").length, cur: d.querySelector(".twTok.twCur")?.textContent };
+  })()`);
+  ok(twr1.done === 2 && twr1.cur === "brown", `英文整词组上屏跨token推进(完成${twr1.done}, 当前=${twr1.cur})`);
+  for (let i = 0; i < 2; i++) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }))`);
+  await evalJs(`(() => {
+    const inp = document.getElementById("typingInput");
+    inp.value = "你好世界";
+    inp.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  })()`);
+  const twr2 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { cur: d.querySelector(".twTok.twCur")?.textContent, cnDone: [...d.querySelectorAll(".twTok.twGot")].filter(s => /[你好世界]/.test(s.textContent)).length };
+  })()`);
+  ok(twr2.cnDone === 4 && twr2.cur === "日本語", `中文整词上屏(${twr2.cnDone}字点亮) 衔接日文块(当前=${twr2.cur})`);
+  await evalJs(`(() => {
+    const inp = document.getElementById("typingInput");
+    inp.value = "日本語です";
+    inp.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  })()`);
+  await sleep(400);
+  const twr3 = await evalJs(`JSON.stringify({ chapEnd: document.querySelector("#toast .toastMsg")?.textContent === t("twChapDone") || twState?.tokens?.length === 0 })`);
+  ok(JSON.parse(twr3).chapEnd, "日文上屏字面比对全章收束");
+  await evalJs(`document.querySelector('#twModeSeg [data-twmode="pinyin"]').click()`);
+  const twr4 = await evalJs(`state.twReal === false`);
+  ok(twr4, "切回拼音对照模式");
   await evalJs(`document.getElementById("closeBookBtn").click()`);
   await sleep(300);
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);

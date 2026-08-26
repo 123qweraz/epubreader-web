@@ -6,7 +6,7 @@ function buildMindMapTree(entries) {
   const root = { label: "", children: [], collapsed: false, depth: -1, chapterIndex: -1, fragment: "" };
   const stack = [root];
   for (const e of entries) {
-    while (stack.length > 1 && stack[stack.length - 1].depth >= e.depth) stack.pop();
+    while (stack.length > 1 && stack[stack.length - 1].depth > e.depth) stack.pop();
     const node = { label: e.label, children: [], collapsed: false, depth: e.depth, chapterIndex: e.chapterIndex, fragment: e.fragment, path: e.path };
     stack[stack.length - 1].children.push(node);
     stack.push(node);
@@ -79,7 +79,7 @@ function mindMapNavigate(node) {
       const m = d?.querySelector(`[data-hl="${h.id}"]`);
       if (m) m.scrollIntoView({ block: "center", behavior: REDUCED_MOTION ? "instant" : "smooth" });
     }, 700);
-    $("sidebar").classList.remove("open");
+    if (!state.sidebarPinned) $("sidebar").classList.remove("open");
     return;
   }
   if (node.chapterIndex < 0) return;
