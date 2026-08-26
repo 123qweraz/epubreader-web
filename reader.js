@@ -89,8 +89,9 @@ const state = {
   annotate: "off",
   /* 打字模式: 会话级, 照书打字驱动阅读(typing.js) */
   typing: false,
-  /* 马克笔高亮: 会话级开关 + 记忆的颜色(划词标记, 导图联动) */
+  /* 马克笔高亮: 会话级开关 + 记忆的颜色(划词标记, 导图联动); once=单击进入的单次模式 */
   marker: false,
+  markerOnce: false,
   markerColor: localStorage.getItem("mkColor") || "#ffe066",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
@@ -1748,6 +1749,8 @@ function handleKey(e) {
     if (e.key === "Escape") { el.blur?.(); if (!state.settingsPinned) setSettingsOpen(false); syncOverlayAria(); }
     return;
   }
+  /* 马克笔模式下Esc退出(打字模式优先消费自己的Esc) */
+  if (state.marker && e.key === "Escape" && !state.typing) { setMarker(false); return; }
   /* 打字模式优先: 字母键喂入引擎(输入条未聚焦时的兜底路径); 空格禁用(避免误触翻段); Esc退出, Tab跳词 */
   if (state.typing) {
     if (e.key === "Escape") { setTyping(false); return; }
@@ -2026,7 +2029,7 @@ function switchSideTab(tab) {
   $("toc").hidden = tab !== "toc";
   $("searchPage").hidden = tab !== "search";
   $("mindMapPage").hidden = tab !== "mindmap";
-  if (tab === "mindmap") { resetMindMapView(); renderMindMap(); }
+  if (tab === "mindmap") renderMindMap();   /* 视图位置已按书记忆, 切换不重置 */
   syncOverlayAria();
 }
 $("tabToc").onclick = () => switchSideTab("toc");
@@ -2369,14 +2372,27 @@ function syncMarkerUI() {
   b.setAttribute("aria-pressed", String(state.marker));
   $("markerPalette").hidden = !state.marker;
 }
-function setMarker(on) {
+function setMarker(on, opts = {}) {
   if (!state.book) return;
   state.marker = on;
+  state.markerOnce = on && !!opts.once;
   syncMarkerUI();
   const d = $("bookFrame")?.contentDocument;
   d?.body?.classList.toggle("mkMode", on);
 }
-$("markerBtn").onclick = () => setMarker(!state.marker);
+/* 单击=单次模式(标记一次自动退出), 双击=持续模式; 开启中单击图标=关闭 */
+let mkClickTimer = 0;
+$("markerBtn").addEventListener("click", () => {
+  if (!state.book) return;
+  if (state.marker) { setMarker(false); return; }
+  clearTimeout(mkClickTimer);
+  mkClickTimer = setTimeout(() => setMarker(true, { once: true }), 260);
+});
+$("markerBtn").addEventListener("dblclick", () => {
+  if (!state.book) return;
+  clearTimeout(mkClickTimer);
+  setMarker(true, { once: false });
+});
 /* 色板构建 */
 (function() {
   const pal = $("markerPalette");
@@ -2479,6 +2495,7 @@ function hlFromSelection(win) {
   list.push(rec);
   hlSave(list);
   sel.removeAllRanges();
+  if (state.markerOnce) setMarker(false);   /* 单次模式: 标记即退出 */
 }
 function hlDelete(id, anchorEl) {
   const list = hlLoad();

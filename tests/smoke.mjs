@@ -481,7 +481,9 @@ window.__rawEpub = (title, o = {}) => {
   })`);
   const m0p = JSON.parse(m0);
   ok(m0p.active && m0p.dots === 5 && m0p.cursorMode, `马克笔模式开启(色板${m0p.dots}色, 光标态${m0p.cursorMode})`);
-  /* 划选 "quick brown" */
+  /* 划选 "quick brown" —— 单击进入单次模式: 标记后应自动退出 */
+  await sleep(400);   /* 越过单击判定窗口 */
+  const wasOnce = await evalJs(`state.marker && state.markerOnce`);
   await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;
     const tn = d.querySelector("p").firstChild;
@@ -496,12 +498,16 @@ window.__rawEpub = (title, o = {}) => {
     marks: [...document.getElementById("bookFrame").contentDocument.querySelectorAll("mark.mkHl")].map(m => m.textContent),
     stored: hlLoad().length,
     prefix: hlLoad()[0]?.prefix, suffix: hlLoad()[0]?.suffix,
-    color: hlLoad()[0]?.color
+    color: hlLoad()[0]?.color,
+    markerOff: !state.marker
   })`);
   const m1p = JSON.parse(m1);
   ok(m1p.marks.join(",") === "quick brown" && m1p.stored === 1 && m1p.prefix !== "" && m1p.suffix !== "",
     `划选标记成功(${m1p.marks.join("|")}, 前后文锚点齐备)`);
-  /* 换色后再划一条 */
+  ok(wasOnce === true && m1p.markerOff, `单击=单次模式: 划前单次态(${wasOnce}), 标记后自动退出(${m1p.markerOff})`);
+  /* 双击进入持续模式, 再划一条(换色) */
+  await evalJs(`(() => { const b = document.getElementById("markerBtn"); b.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); })()`);
+  await sleep(200);
   await evalJs(`document.querySelectorAll("#markerPalette .mkDot")[1].click()`);
   await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;
@@ -513,8 +519,8 @@ window.__rawEpub = (title, o = {}) => {
     d.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   })()`);
   await sleep(150);
-  const m2 = await evalJs(`JSON.stringify({ n: hlLoad().length, colorSaved: !!localStorage.getItem("mkColor") })`);
-  ok(JSON.parse(m2).n === 2 && JSON.parse(m2).colorSaved, `换色第二标记(共${JSON.parse(m2).n}条)`);
+  const m2 = await evalJs(`JSON.stringify({ n: hlLoad().length, colorSaved: !!localStorage.getItem("mkColor"), stillOn: state.marker && !state.markerOnce })`);
+  ok(JSON.parse(m2).n === 2 && JSON.parse(m2).colorSaved && JSON.parse(m2).stillOn, `双击=持续模式: 第二条标记后仍开启(共${JSON.parse(m2).n}条)`);
   /* 重渲染持久化回贴 */
   await evalJs(`rerenderReader()`);
   await sleep(1200);
@@ -528,15 +534,31 @@ window.__rawEpub = (title, o = {}) => {
     return {
       n: nodes.length,
       sample: nodes[0]?.textContent,
-      colorVar: nodes[0] ? getComputedStyle(nodes[0]).backgroundColor : ""
+      colorVar: nodes[0] ? getComputedStyle(nodes[0]).backgroundColor : "",
+      pos: nodes.map(n => n.style.left + "@" + n.style.top),
+      titled: nodes.every(n => (n.title || "").length > 0)
     };
   })()`);
   ok(m4.n === 2 && /quick/.test(m4.sample || ""), `导图高亮子节点(${m4.n}个: ${(m4.sample || "").slice(0, 16)}…)`);
+  ok(m4.pos.every(p => /px/.test(p)) && new Set(m4.pos).size === m4.pos.length,
+    `高亮子节点布局正确不重叠(${m4.pos.join(" | ")})`);
+  ok(m4.titled, "悬停显示完整划选内容(title)");;
   /* 点击导图高亮节点 → 跳原文不报错且侧栏收起 */
   await evalJs(`document.querySelector(".mmNode.mmHl").click()`);
   await sleep(900);
   const m5 = await evalJs(`!document.getElementById("sidebar").classList.contains("open") && !!state.book`);
   ok(m5, "点击导图高亮节点跳转并收起面板");
+  /* 视图记忆: 改缩放/平移 → 切走再切回 → 保持 */
+  await evalJs(`switchSideTab("mindmap")`);
+  await evalJs(`mmScale = 1.5; mmTranslateX = -80; mmTranslateY = -40; mmScheduleSave();`);
+  await sleep(600);
+  await evalJs(`switchSideTab("toc")`);
+  await sleep(150);
+  await evalJs(`switchSideTab("mindmap")`);
+  await sleep(400);
+  const m8 = await evalJs(`JSON.stringify({ s: mmScale, x: mmTranslateX, y: mmTranslateY })`);
+  const m8p = JSON.parse(m8);
+  ok(m8p.s === 1.5 && m8p.x === -80 && m8p.y === -40, `导图视图位置记忆(${m8})`);
   /* 删除: 退出标记模式后点已有高亮 → toast动作 */
   await evalJs(`document.getElementById("markerBtn").click()`);
   await sleep(200);

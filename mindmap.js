@@ -98,6 +98,31 @@ function mmApplyTransform(wrap) {
   wrap.style.transform = `scale(${mmScale}) translate(${mmTranslateX}px,${mmTranslateY}px)`;
 }
 
+/* ---------- 视图记忆: 按书记录缩放/平移, 交互后防抖保存 ---------- */
+let mmViewBookKey = null;
+let mmSaveTimer = 0;
+function mmViewKey() {
+  return state.book ? `mmView:${state.book.title}:${state.book.fileSize ?? ""}` : null;
+}
+function mmLoadViewOnce() {
+  const key = mmViewKey();
+  if (!key || mmViewBookKey === key) return;
+  mmViewBookKey = key;
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || "null");
+    if (v && Number.isFinite(v.s)) { mmScale = Math.min(3, Math.max(0.2, v.s)); mmTranslateX = v.x || 0; mmTranslateY = v.y || 0; return; }
+  } catch {}
+  mmScale = 1; mmTranslateX = 0; mmTranslateY = 0;
+}
+function mmScheduleSave() {
+  clearTimeout(mmSaveTimer);
+  mmSaveTimer = setTimeout(() => {
+    const key = mmViewKey();
+    if (!key) return;
+    try { localStorage.setItem(key, JSON.stringify({ s: mmScale, x: mmTranslateX, y: mmTranslateY })); } catch {}
+  }, 400);
+}
+
 /* ---------- 马克笔高亮 → 导图子节点: 挂到所属目录单元下, 点击跳回原文 ---------- */
 function attachMindHighlights(displayRoot) {
   const list = (typeof hlLoad === "function") ? hlLoad() : [];
@@ -135,11 +160,15 @@ function renderMindMap() {
   if (!container) return;
   const entries = state.tocEntries;
   if (!entries || !entries.length) { container.innerHTML = `<div class="mmEmpty">${t("mmEmpty")}</div>`; return; }
+  mmLoadViewOnce();
 
   const tree = buildMindMapTree(entries);
   /* 如果只有一个根级子节点, 跳过虚拟根 */
   const displayRoot = tree.children.length === 1 && tree.children[0].depth === 0 ? tree.children[0] : tree;
   if (displayRoot === tree) { displayRoot.label = state.book?.title || "Mind Map"; displayRoot.depth = -1; }
+
+  /* 高亮子节点必须先于布局挂载: 否则无坐标(全叠原点)且不参与连线 */
+  attachMindHighlights(displayRoot);
 
   assignX(displayRoot, 0);
   assignY(displayRoot, MM.PAD_Y);
@@ -148,7 +177,6 @@ function renderMindMap() {
   const maxDepth = (() => { let d = 0; const walk = (n, dep) => { if (dep > d) d = dep; if (!n.collapsed) n.children.forEach(c => walk(c, dep + 1)); }; walk(displayRoot, 0); return d; })();
   const totalW = MM.PAD_X + (maxDepth + 1) * MM.LEVEL_W + MM.PAD_X;
 
-  attachMindHighlights(displayRoot);
   const nodes = [];
   collectNodes(displayRoot, nodes);
   const paths = buildSvgPaths(displayRoot);
@@ -173,7 +201,10 @@ function renderMindMap() {
   for (const n of nodes) {
     const el = document.createElement("div");
     el.className = "mmNode" + (n.collapsed ? " mmCollapsed" : "") + (n.depth === 0 ? " mmRoot" : n.depth === 1 ? " mmL1" : "") + (n.children.length ? " mmHasChildren" : "") + (n.hl ? " mmHl" : "");
-    if (n.hl) el.style.setProperty("--hlc", n.hl.color);
+    if (n.hl) {
+      el.style.setProperty("--hlc", n.hl.color);
+      el.title = n.hl.text;   /* 悬停看完整划选内容 */
+    }
     const txt = document.createElement("span");
     txt.className = "mmLabel";
     txt.textContent = n.label;
@@ -213,7 +244,7 @@ function renderMindMap() {
       /* 中键拖拽平移 */
       mmTranslateX = (e.clientX - mmDragX) / mmScale;
       mmTranslateY = (e.clientY - mmDragY) / mmScale;
-      mmApplyTransform(wrap);
+      mmApplyTransform(wrap); mmScheduleSave();
     } else if (e.buttons === 1) {
       /* 左键拖拽也平移(更直觉) */
       const dx = e.clientX - mmDragX, dy = e.clientY - mmDragY;
@@ -224,6 +255,7 @@ function renderMindMap() {
         mmDragX = e.clientX;
         mmDragY = e.clientY;
         mmApplyTransform(wrap);
+        mmScheduleSave();
       }
     }
   };
@@ -244,7 +276,7 @@ function renderMindMap() {
     /* 保持鼠标位置下的内容点不动: tx' = tx + cx*(1/S' - 1/S) */
     mmTranslateX += cx * (1 / mmScale - 1 / oldScale);
     mmTranslateY += cy * (1 / mmScale - 1 / oldScale);
-    mmApplyTransform(wrap);
+    mmApplyTransform(wrap); mmScheduleSave();
   };
   /* 禁用中键默认行为(自动滚动) */
   container.oncontextmenu = (e) => { if (e.button === 1) e.preventDefault(); };
