@@ -151,6 +151,7 @@ function scheduleProgressSave() {
 function flushProgress() {
   if (progSaveTimer) { clearTimeout(progSaveTimer); progSaveTimer = 0; }
   saveProgress();
+  updateProgress();
 }
 function currentRatio() {
   return pagedActive() ? (state.pageIdx + 0.5) / Math.max(1, pagedCtx.pages) : currentScrollRatio();
