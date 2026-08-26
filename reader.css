@@ -168,6 +168,13 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 #typingBar .tbHint { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 #typingBar .tbStat { font-size: var(--fs-xs); color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #typingInput { width: 13em; border: none; background: transparent; color: var(--fg); outline: none; font-size: var(--fs-sm); caret-color: var(--accent); }
+/* ---- 马克笔高亮 ---- */
+mark.mkHl { background: var(--hlc, #ffe066); color: inherit; border-radius: 2px; padding: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+#markerPalette { position: fixed; top: 54px; right: 14px; z-index: 70; display: flex; gap: 8px; align-items: center; background: var(--bar); border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; box-shadow: var(--shadow-2); }
+#markerPalette[hidden] { display: none; }
+.mkDot { width: 22px; height: 22px; border-radius: 50%; background: var(--c); border: 2px solid transparent; padding: 0; transition: transform .12s ease, border-color .12s ease; }
+.mkDot:hover { transform: scale(1.15); }
+.mkDot.active { border-color: var(--fg); transform: scale(1.15); }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .settingVal { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -234,6 +241,9 @@ body.dark .mmNode { background: #302e2b; border-color: #4a4641; }
 body.dark .mmNode.mmRoot { background: var(--accent); border-color: var(--accent); }
 body.dark .mmNode.mmL1 { background: #3a3733; border-color: var(--accent); }
 body.dark .mmBadge { background: rgba(255,255,255,.08); }
+/* 马克笔高亮导图子节点: 背景即高亮色 */
+.mmNode.mmHl { background: var(--hlc, #ffe066); border-color: rgba(0,0,0,.18); color: #26241f; font-weight: 500; max-width: 240px; }
+body.dark .mmNode.mmHl { color: #26241f; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }

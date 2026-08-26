@@ -70,6 +70,18 @@ function toggleMindMapNode(node) {
 
 /* ---------- 点击跳转 ---------- */
 function mindMapNavigate(node) {
+  if (node.hl) {
+    /* 高亮子节点: 定位到所在单元后滚动到标记处 */
+    const h = node.hl;
+    safeShowUnit(h.unitIdx >= 0 ? h.unitIdx : firstUnitOfFile(h.spineIdx));
+    setTimeout(() => {
+      const d = $("bookFrame")?.contentDocument;
+      const m = d?.querySelector(`[data-hl="${h.id}"]`);
+      if (m) m.scrollIntoView({ block: "center", behavior: REDUCED_MOTION ? "instant" : "smooth" });
+    }, 700);
+    $("sidebar").classList.remove("open");
+    return;
+  }
   if (node.chapterIndex < 0) return;
   const ui = findUnit(node.chapterIndex, node.fragment);
   if (ui >= 0) safeShowUnit(ui);
@@ -84,6 +96,37 @@ let mmDragMoved = false;   /* 区分拖拽与点击: mousedown→mousemove位移
 /* ---------- 应用变换到 wrap ---------- */
 function mmApplyTransform(wrap) {
   wrap.style.transform = `scale(${mmScale}) translate(${mmTranslateX}px,${mmTranslateY}px)`;
+}
+
+/* ---------- 马克笔高亮 → 导图子节点: 挂到所属目录单元下, 点击跳回原文 ---------- */
+function attachMindHighlights(displayRoot) {
+  const list = (typeof hlLoad === "function") ? hlLoad() : [];
+  if (!list.length) return;
+  const findNode = (node, i, frag) => {
+    if (node.chapterIndex === i && node.fragment === frag && !node.hl) return node;
+    for (const c of node.children) {
+      const r = findNode(c, i, frag);
+      if (r) return r;
+    }
+    return null;
+  };
+  for (const h of list) {
+    const u = state.navUnits[h.unitIdx] || {};
+    const entry = state.tocEntries?.find(e => e.chapterIndex === h.spineIdx && e.fragment === u.frag);
+    let parent = findNode(displayRoot, h.spineIdx, entry?.fragment ?? "");
+    if (!parent) parent = findNode(displayRoot, h.spineIdx, h.text.slice(0, 0));   /* 无匹配fragment时找章节首节点 */
+    if (!parent) {
+      const walkDeepest = n => { let best = n.chapterIndex === h.spineIdx ? n : null; for (const c of n.children) { const r = walkDeepest(c); if (r) best = r; } return best; };
+      parent = walkDeepest(displayRoot) || displayRoot;
+    }
+    parent.children.push({
+      label: "🖊 " + (h.label || h.text.slice(0, 12)),
+      children: [], collapsed: false,
+      depth: parent.depth + 1,
+      chapterIndex: h.spineIdx, fragment: u.frag || "",
+      hl: h
+    });
+  }
 }
 
 /* ---------- 主渲染函数 ---------- */
@@ -105,6 +148,7 @@ function renderMindMap() {
   const maxDepth = (() => { let d = 0; const walk = (n, dep) => { if (dep > d) d = dep; if (!n.collapsed) n.children.forEach(c => walk(c, dep + 1)); }; walk(displayRoot, 0); return d; })();
   const totalW = MM.PAD_X + (maxDepth + 1) * MM.LEVEL_W + MM.PAD_X;
 
+  attachMindHighlights(displayRoot);
   const nodes = [];
   collectNodes(displayRoot, nodes);
   const paths = buildSvgPaths(displayRoot);
@@ -128,7 +172,8 @@ function renderMindMap() {
 
   for (const n of nodes) {
     const el = document.createElement("div");
-    el.className = "mmNode" + (n.collapsed ? " mmCollapsed" : "") + (n.depth === 0 ? " mmRoot" : n.depth === 1 ? " mmL1" : "") + (n.children.length ? " mmHasChildren" : "");
+    el.className = "mmNode" + (n.collapsed ? " mmCollapsed" : "") + (n.depth === 0 ? " mmRoot" : n.depth === 1 ? " mmL1" : "") + (n.children.length ? " mmHasChildren" : "") + (n.hl ? " mmHl" : "");
+    if (n.hl) el.style.setProperty("--hlc", n.hl.color);
     const txt = document.createElement("span");
     txt.className = "mmLabel";
     txt.textContent = n.label;

@@ -89,6 +89,9 @@ const state = {
   annotate: "off",
   /* 打字模式: 会话级, 照书打字驱动阅读(typing.js) */
   typing: false,
+  /* 马克笔高亮: 会话级开关 + 记忆的颜色(划词标记, 导图联动) */
+  marker: false,
+  markerColor: localStorage.getItem("mkColor") || "#ffe066",
   theme: ["light","white","sepia","green","dark","custom"].includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "light",
   customSlots: loadCustomSlots(),
   customSlotIdx: Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0)),
@@ -1260,6 +1263,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     body{${famDecl}font-size:${state.fontSize}px;line-height:${state.lineHeight};padding:48px max(24px,5vw);box-sizing:border-box;min-height:100vh;overflow-y:auto;overflow-x:hidden;}
     body>*{max-width:100%;} img,svg,video{max-width:100%;height:auto;} pre{white-space:pre-wrap;overflow:auto;}
     a{color:inherit;} p{text-align:justify;} h1,h2,h3,h4,h5,h6{break-after:avoid;}
+    .mkMode, .mkMode *{cursor:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M3 21l2-6L16 4l4 4L9 19z" fill="%23ffe066" stroke="%23333" stroke-width="1.4"/></svg>') 4 20, text !important;}
     img,figure,table,pre,blockquote{break-inside:avoid;}
     html{scroll-behavior:smooth;overscroll-behavior:contain;}
     @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;} .pgflow{transition:none !important;}}
@@ -1391,6 +1395,17 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
   if (state.typing && !doc.__twBound) {
     doc.__twBound = true;
     twEnterPick(doc);
+  }
+  /* 马克笔: 模式光标 + 已存高亮回贴 + 划选/点击处理(每文档绑一次) */
+  if (state.marker) doc.body.classList.add("mkMode");
+  hlApplyAll(doc);
+  if (!doc.__mkBound) {
+    doc.__mkBound = true;
+    doc.addEventListener("mouseup", () => setTimeout(() => hlFromSelection(win), 0));
+    doc.addEventListener("click", e => {
+      const mk = e.target.closest?.("mark.mkHl");
+      if (mk && !state.marker) hlDelete(mk.dataset.hl, mk);
+    });
   }
   autoJumping = false;
   clearTimeout(autoJumpTimer);
@@ -2304,6 +2319,156 @@ $("typingInput").addEventListener("blur", () => {
     if (state.typing && document.activeElement !== $("typingInput")) $("typingInput").focus({ preventScroll: true });
   }, 180);
 });
+
+$("typingInput").addEventListener("blur", () => {
+  if (!state.typing) return;
+  clearTimeout(twBlurTimer);
+  twBlurTimer = setTimeout(() => {
+    if (state.typing && document.activeElement !== $("typingInput")) $("typingInput").focus({ preventScroll: true });
+  }, 180);
+});
+
+/* ---- 马克笔高亮: 划词标记 → 文本锚点持久化 → 导图子节点联动 ---- */
+const MK_COLORS = ["#ffe066", "#a5f3a1", "#9bd7ff", "#ffb3d9", "#ffd39b"];
+function hlKey() { return `highlights:${state.book.title}:${state.book.fileSize ?? ""}`; }
+function hlLoad() {
+  try { const v = JSON.parse(localStorage.getItem(hlKey()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function hlSave(list) { try { localStorage.setItem(hlKey(), JSON.stringify(list)); } catch {} }
+function syncMarkerUI() {
+  const b = $("markerBtn");
+  b.classList.toggle("active", state.marker);
+  b.setAttribute("aria-pressed", String(state.marker));
+  $("markerPalette").hidden = !state.marker;
+}
+function setMarker(on) {
+  if (!state.book) return;
+  state.marker = on;
+  syncMarkerUI();
+  const d = $("bookFrame")?.contentDocument;
+  d?.body?.classList.toggle("mkMode", on);
+}
+$("markerBtn").onclick = () => setMarker(!state.marker);
+/* 色板构建 */
+(function() {
+  const pal = $("markerPalette");
+  for (const c of MK_COLORS) {
+    const dot = document.createElement("button");
+    dot.className = "mkDot" + (c === state.markerColor ? " active" : "");
+    dot.style.setProperty("--c", c);
+    dot.setAttribute("aria-label", c);
+    dot.onclick = () => {
+      state.markerColor = c;
+      try { localStorage.setItem("mkColor", c); } catch {}
+      [...pal.children].forEach(d2 => d2.classList.toggle("active", d2 === dot));
+    };
+    pal.appendChild(dot);
+  }
+})();
+/* 文本锚点回贴: 在章节根内按 前缀+文本+后缀 定位并包裹 */
+function hlWrapRange(doc, range, h) {
+  const frag = range.extractContents();
+  const mk = doc.createElement("mark");
+  mk.className = "mkHl";
+  mk.dataset.hl = h.id;
+  mk.style.setProperty("--hlc", h.color);
+  mk.appendChild(frag);
+  range.insertNode(mk);
+}
+function hlApplyOne(doc, root, h) {
+  if (root.querySelector(`[data-hl="${h.id}"]`)) return true;
+  const nodes = [];
+  let full = "";
+  const w = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => n.parentElement.closest("rt,rp,script,style,mark.mkHl") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
+  while (w.nextNode()) { nodes.push({ n: w.currentNode, s: full.length }); full += w.currentNode.nodeValue; }
+  let tStart = full.indexOf(h.prefix + h.text + h.suffix);
+  if (tStart >= 0) tStart += h.prefix.length;
+  else tStart = full.indexOf(h.text);   /* 上下文失配(如注音改排)退化为纯文本匹配 */
+  if (tStart < 0) return false;
+  const tEnd = tStart + h.text.length;
+  for (const { n, s } of nodes) {
+    const ns = s + n.nodeValue.length;
+    if (ns <= tStart || s >= tEnd) continue;
+    const a = Math.max(0, tStart - s), b = Math.min(n.nodeValue.length, tEnd - s);
+    const r = doc.createRange();
+    r.setStart(n, a);
+    r.setEnd(n, b);
+    hlWrapRange(doc, r, h);
+  }
+  return true;
+}
+function hlApplyAll(doc) {
+  if (!doc?.body) return;
+  for (const h of hlLoad()) {
+    const root = doc.getElementById(`sp${h.spineIdx}`) || (h.spineIdx === state.chapterIndex ? doc.body : null);
+    if (!root) continue;
+    hlApplyOne(doc, root, h);
+  }
+}
+/* 选区→记录: 章节定位+前后文+最近目录单元(导图挂载点/跳转用) */
+function hlFromSelection(win) {
+  if (!state.marker) return;
+  const sel = win.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const txt = String(sel).replace(/\s+/g, " ").trim();
+  const range = sel.getRangeAt(0);
+  if (!txt || range.collapsed) return;
+  const doc = win.document;
+  const startEl = range.startContainer.parentElement || range.startContainer;
+  const sec = startEl.closest?.(".spinePart");
+  const spineIdx = sec ? Number(sec.id.slice(2)) : state.chapterIndex;
+  const root = sec || doc.body;
+  const pre = doc.createRange();
+  pre.selectNodeContents(root);
+  try { pre.setEnd(range.startContainer, range.startOffset); } catch { return; }
+  const startOff = pre.toString().length;
+  const fullText = root.textContent;
+  const prefix = fullText.slice(Math.max(0, startOff - 16), startOff);
+  const suffix = fullText.slice(startOff + txt.length, startOff + txt.length + 24);
+  /* 最近单元: 同文件内片段锚点纵坐标 ≤ 选区中点者取最下 */
+  let unitIdx = firstUnitOfFile(spineIdx);
+  let bestTop = -Infinity;
+  const rr = range.getBoundingClientRect();
+  for (const [g, u] of state.navUnits.entries()) {
+    if (u.i !== spineIdx || !u.frag) continue;
+    const el = resolveAnchor(doc, u.frag);
+    if (!el) continue;
+    const top = absDocOffset(el);
+    const mid = state.vertical ? rr.left : rr.top;
+    const pos = state.vertical ? -top : top;   /* 阅读序坐标(竖排offsetLeft逆序) */
+    if (pos <= mid + 40 && pos > bestTop) { bestTop = pos; unitIdx = g; }
+  }
+  const rec = {
+    id: "hl" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    spineIdx, text: txt, prefix, suffix,
+    color: state.markerColor, unitIdx,
+    label: txt.slice(0, 14)
+  };
+  hlWrapRange(doc, range.cloneRange(), rec);
+  const list = hlLoad();
+  list.push(rec);
+  hlSave(list);
+  sel.removeAllRanges();
+}
+function hlDelete(id, anchorEl) {
+  const list = hlLoad();
+  const rec = list.find(h => h.id === id);
+  if (!rec) return;
+  toast(t("mkDel"), { action: { label: t("delSelected"), fn: () => {
+    const d = $("bookFrame")?.contentDocument;
+    d?.querySelectorAll(`[data-hl="${id}"]`).forEach(m => {
+      const parent = m.parentNode;
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      m.remove();
+      parent.normalize();
+    });
+    hlSave(hlLoad().filter(h => h.id !== id));
+    renderMindMap();
+    toast(t("mkDeleted"));
+  } } });
+}
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
   key: "fontSize", min: 10, max: 36,

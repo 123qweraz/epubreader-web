@@ -469,6 +469,94 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6b-5. 马克笔高亮: 划选标记/持久化回贴/删除/导图子节点联动 ---- */
+  await evalJs(`openBookFile(window.__makeEpubFile(window.__twZip, "tw2.epub"))`);
+  await sleep(900);
+  await evalJs(`document.getElementById("markerBtn").click()`);
+  await sleep(300);
+  const m0 = await evalJs(`JSON.stringify({
+    active: document.getElementById("markerBtn").classList.contains("active"),
+    dots: document.querySelectorAll("#markerPalette .mkDot").length,
+    cursorMode: document.getElementById("bookFrame").contentDocument.body.classList.contains("mkMode")
+  })`);
+  const m0p = JSON.parse(m0);
+  ok(m0p.active && m0p.dots === 5 && m0p.cursorMode, `马克笔模式开启(色板${m0p.dots}色, 光标态${m0p.cursorMode})`);
+  /* 划选 "quick brown" */
+  await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const tn = d.querySelector("p").firstChild;
+    const r = d.createRange();
+    r.setStart(tn, 4); r.setEnd(tn, 15);
+    const sel = d.defaultView.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
+    d.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  })()`);
+  await sleep(150);
+  const m1 = await evalJs(`JSON.stringify({
+    marks: [...document.getElementById("bookFrame").contentDocument.querySelectorAll("mark.mkHl")].map(m => m.textContent),
+    stored: hlLoad().length,
+    prefix: hlLoad()[0]?.prefix, suffix: hlLoad()[0]?.suffix,
+    color: hlLoad()[0]?.color
+  })`);
+  const m1p = JSON.parse(m1);
+  ok(m1p.marks.join(",") === "quick brown" && m1p.stored === 1 && m1p.prefix !== "" && m1p.suffix !== "",
+    `划选标记成功(${m1p.marks.join("|")}, 前后文锚点齐备)`);
+  /* 换色后再划一条 */
+  await evalJs(`document.querySelectorAll("#markerPalette .mkDot")[1].click()`);
+  await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const tn = d.querySelectorAll("p")[1].firstChild;
+    const r = d.createRange();
+    r.setStart(tn, 0); r.setEnd(tn, 2);
+    const sel = d.defaultView.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
+    d.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  })()`);
+  await sleep(150);
+  const m2 = await evalJs(`JSON.stringify({ n: hlLoad().length, colorSaved: !!localStorage.getItem("mkColor") })`);
+  ok(JSON.parse(m2).n === 2 && JSON.parse(m2).colorSaved, `换色第二标记(共${JSON.parse(m2).n}条)`);
+  /* 重渲染持久化回贴 */
+  await evalJs(`rerenderReader()`);
+  await sleep(1200);
+  const m3 = await evalJs(`document.getElementById("bookFrame").contentDocument.querySelectorAll("mark.mkHl").length`);
+  ok(m3 === 2, `重渲染回贴(${m3}/2)`);
+  /* 导图子节点联动 */
+  await evalJs(`switchSideTab("mindmap")`);
+  await sleep(500);
+  const m4 = await evalJs(`(() => {
+    const nodes = [...document.querySelectorAll(".mmNode.mmHl")];
+    return {
+      n: nodes.length,
+      sample: nodes[0]?.textContent,
+      colorVar: nodes[0] ? getComputedStyle(nodes[0]).backgroundColor : ""
+    };
+  })()`);
+  ok(m4.n === 2 && /quick/.test(m4.sample || ""), `导图高亮子节点(${m4.n}个: ${(m4.sample || "").slice(0, 16)}…)`);
+  /* 点击导图高亮节点 → 跳原文不报错且侧栏收起 */
+  await evalJs(`document.querySelector(".mmNode.mmHl").click()`);
+  await sleep(900);
+  const m5 = await evalJs(`!document.getElementById("sidebar").classList.contains("open") && !!state.book`);
+  ok(m5, "点击导图高亮节点跳转并收起面板");
+  /* 删除: 退出标记模式后点已有高亮 → toast动作 */
+  await evalJs(`document.getElementById("markerBtn").click()`);
+  await sleep(200);
+  await evalJs(`document.getElementById("bookFrame").contentDocument.querySelector("mark.mkHl").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+  await sleep(200);
+  const m6 = await evalJs(`(() => {
+    const act = document.querySelector("#toast .toastAct");
+    if (!act) return { has: false };
+    act.click();
+    return { has: true };
+  })()`);
+  await sleep(400);
+  const m7 = await evalJs(`JSON.stringify({ left: hlLoad().length, marks: document.getElementById("bookFrame").contentDocument.querySelectorAll("mark.mkHl").length })`);
+  const m7p = JSON.parse(m7);
+  ok(m6.has && m7p.left === 1 && m7p.marks === 1, `toast删除高亮(剩${m7p.left}条/${m7p.marks}个标记)`);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
   const openWild = async (buildExpr, title, msg) => {
     await evalJs(`openBookFile(${buildExpr})`);
