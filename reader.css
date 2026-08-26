@@ -166,6 +166,7 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 #typingBar { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; background: var(--bar); border: 1px solid var(--border); border-radius: 999px; padding: 7px 16px; box-shadow: var(--shadow-2); }
 #typingBar[hidden] { display: none; }
 #typingBar .tbHint { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+#typingBar .tbStat { font-size: var(--fs-xs); color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #typingInput { width: 13em; border: none; background: transparent; color: var(--fg); outline: none; font-size: var(--fs-sm); caret-color: var(--accent); }
 .settingLabel { flex: 0 0 auto; }
 .settingHint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }

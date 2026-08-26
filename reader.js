@@ -2295,6 +2295,15 @@ $("typingInput").addEventListener("keydown", e => {
   else if (e.key === "Tab") { twSkip(); e.preventDefault(); }
   else if (e.key === "Enter") e.preventDefault();
 });
+/* 打字期间输入条失焦(点击页面其他处)自动回焦: 保证持续可输入; Esc退出后不再抢焦 */
+let twBlurTimer = 0;
+$("typingInput").addEventListener("blur", () => {
+  if (!state.typing) return;
+  clearTimeout(twBlurTimer);
+  twBlurTimer = setTimeout(() => {
+    if (state.typing && document.activeElement !== $("typingInput")) $("typingInput").focus({ preventScroll: true });
+  }, 180);
+});
 
 const syncFontSize = bindSetting("fontSizeRange", "fontSizeNum", {
   key: "fontSize", min: 10, max: 36,

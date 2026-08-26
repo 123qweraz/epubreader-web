@@ -398,7 +398,7 @@ window.__rawEpub = (title, o = {}) => {
     const d = document.getElementById("bookFrame").contentDocument;
     return {
       spot: d.body.classList.contains("twSpot"),
-      dimmed: d.querySelectorAll(".twDim").length,
+      grayActive: d.querySelectorAll(".twGrayBlock").length,
       n: d.querySelectorAll(".twTok").length,
       cur: d.querySelector(".twTok.twCur")?.textContent,
       barShown: !document.getElementById("typingBar").hidden,
@@ -406,7 +406,7 @@ window.__rawEpub = (title, o = {}) => {
       caret: !!d.querySelector(".twCaret")
     };
   })()`);
-  ok(t0b.spot && t0b.dimmed >= 2 && t0b.n === 4 && t0b.cur === "The", `点选段激活(${t0b.n}token, 当前=${t0b.cur}, 压暗${t0b.dimmed}块)`);
+  ok(t0b.spot && t0b.grayActive === 1 && t0b.n === 4 && t0b.cur === "The", `点选段激活(${t0b.n}token, 当前=${t0b.cur}, 灰段${t0b.grayActive}块)`);
   ok(t0b.barShown && t0b.inputFocused && t0b.caret, `输入条显示且聚焦(光标=${t0b.caret})`);
   /* 英文大小写不敏感键入 + 逐字母点亮 */
   for (const k of ["T", "H"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);

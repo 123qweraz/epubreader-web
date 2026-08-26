@@ -140,8 +140,9 @@ function twWrapBlock(doc, block, jaCtx) {
 const TW_PICK_CSS = `
   ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}`).join(",")} { cursor: pointer; }
   ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}:hover`).join(",")} { background: rgba(128,128,128,.18); }
-  .twDim { opacity: .2; }
-  .twDim, .spinePart, ${TW_BLOCK_SEL.split(",").join(",")} { transition: opacity .3s ease; }
+  .twGrayBlock { opacity: .38; filter: grayscale(.55); }
+  .twGrayBlock .twGot { opacity: 1; filter: none; }
+  ${TW_BLOCK_SEL.split(",").join(",")} { transition: opacity .3s ease, filter .3s ease; }
 `;
 function twFindBlock(doc, target) {
   return twState?.blocks.find(b => b.contains(target)) || null;
@@ -157,6 +158,7 @@ function twEnterPick(doc) {
     doc.head.appendChild(st);
   }
   doc.body.classList.add("twPicking");
+  twUpdateBar();
   doc.__twPickHandler = e => {
     const hit = twFindBlock(doc, e.target) || twState.allBlocks.find(b => b === e.target.closest(TW_BLOCK_SEL));
     if (hit) twStartAt(hit);
@@ -175,6 +177,7 @@ function twStartAt(el) {
   st.blocks = st.allBlocks.slice(Math.max(0, idx));
   st.bi = 0;
   st.phase = "typing";
+  twUpdateBar();
   twLoadBlock(true);
   const inp = $("typingInput");   /* 点选完成即聚焦输入条, 字母直接可打 */
   if (inp) inp.focus({ preventScroll: true });
@@ -195,7 +198,8 @@ function twAnchor(tok) {
 function twApplySpotlight(activeEl) {
   const st = twState;
   if (!st) return;
-  for (const b of st.allBlocks) b.classList.toggle("twDim", b !== activeEl && st.blocks.includes(b));
+  /* 用户预期: 选中段落整体变灰(打完的词恢复), 其他文字保持原样 */
+  for (const b of st.allBlocks) b.classList.toggle("twGrayBlock", b === activeEl);
 }
 
 function twLoadBlock(centerFirst) {
@@ -228,6 +232,7 @@ function twLoadBlock(centerFirst) {
 function twAdvance() {
   const st = twState;
   st.idx++;
+  twUpdateBar();
   const nx = st.tokens[st.idx];
   if (nx) { nx.el.classList.add("twCur"); twPlaceCaret(nx); twAnchor(nx); }
   else twLoadBlock();
@@ -264,6 +269,16 @@ function twSkip() {
   twAdvance();
 }
 /* 拾取态打字提醒: 节流防连按刷屏 */
+/* 输入条状态读数: 让用户可见系统是否在接收输入(拾取中/词序) */
+function twUpdateBar() {
+  const el = document.getElementById("typingStat");
+  if (!el) return;
+  const st = twState;
+  if (!st) { el.textContent = ""; return; }
+  if (st.phase === "pick") { el.textContent = t("twStatPick"); return; }
+  const total = st.tokens.length;
+  el.textContent = total ? ` ${st.idx + 1}/${total}` : "";
+}
 let twNudgeAt = 0;
 function twPickNudge() {
   if (performance.now() - twNudgeAt < 2000) return;
@@ -276,7 +291,7 @@ function twReset() {
   if (doc) {
     if (doc.__twPickHandler) { doc.removeEventListener("click", doc.__twPickHandler); doc.__twPickHandler = null; }
     doc.body?.classList.remove("twPicking", "twSpot");
-    doc.querySelectorAll?.(".twDim").forEach(el => el.classList.remove("twDim"));
+    doc.querySelectorAll?.(".twGrayBlock").forEach(el => el.classList.remove("twGrayBlock"));
   }
   twActive = false;
   twState = null;   /* span烙在DOM里, 关闭/换章由重渲染自然带走(与注音同策略) */
