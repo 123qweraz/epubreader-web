@@ -74,7 +74,12 @@ const I18N_STRINGS = {
     shelfGhost: "待关联", ghostTip: "点击选择本地文件恢复此书",
     relinkBtn: "恢复未关联书籍", relinkResult: "已恢复 {0} 本，{1} 本未能匹配",
     backupBad: "不是有效的备份文件",
-    backupDone: "已导入 {0} 项设置、{1} 本书目"
+    backupDone: "已导入 {0} 项设置、{1} 本书目",
+    secAutoRead: "自动阅读",
+    autoScrollSpeed: "滚动速度", autoScrollSpeedAria: "滚动速度屏每秒", autoScrollSpeedHint: "每秒滚动的视口倍数",
+    autoScrollSpeedUnit: "屏/秒",
+    autoPageInterval: "翻页间隔", autoPageIntervalAria: "翻页间隔毫秒", autoPageIntervalHint: "翻页模式下每页停留时间",
+    autoReadTip: "工具栏倍数按钮调节自动阅读快慢。滚动速度为每秒视口倍数（1 = 每秒滚过一屏），翻页间隔为每页停留毫秒数。"
   },
   en: {
     toc: "Contents", search: "Search", autoRead: "Auto-read",
@@ -142,7 +147,12 @@ const I18N_STRINGS = {
     shelfGhost: "Not linked", ghostTip: "Click to pick the local file and restore this book",
     relinkBtn: "Restore unlinked books", relinkResult: "Restored {0}, {1} unmatched",
     backupBad: "Invalid backup file",
-    backupDone: "Imported {0} preferences, {1} book records"
+    backupDone: "Imported {0} preferences, {1} book records",
+    secAutoRead: "Auto-read",
+    autoScrollSpeed: "Scroll speed", autoScrollSpeedAria: "Scroll speed in viewports per second", autoScrollSpeedHint: "Viewports scrolled per second",
+    autoScrollSpeedUnit: "v/s",
+    autoPageInterval: "Page interval", autoPageIntervalAria: "Page interval in milliseconds", autoPageIntervalHint: "Time per page in paged mode",
+    autoReadTip: "Use the multiplier buttons in the toolbar to adjust auto-read speed. Scroll speed is viewports per second (1 = one screen per second); page interval is milliseconds per page."
   }
 };
 

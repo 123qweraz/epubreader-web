@@ -19,9 +19,11 @@
     <div class="title" id="bookTitle">EPUB Reader</div>
     <div class="toolbarRight">
       <div id="speedCtl" class="speedCtl" hidden>
-        <span data-i18n="speedSlow">慢</span>
-        <input id="speedRange" type="range" min="1" max="10" step="1" aria-label="自动阅读速度" data-i18n-aria="autoReadSpeedAria">
-        <span data-i18n="speedFast">快</span>
+        <button class="speedBtn" data-mult="0.5">0.5×</button>
+        <button class="speedBtn" data-mult="0.75">0.75×</button>
+        <button class="speedBtn" data-mult="1">1×</button>
+        <button class="speedBtn" data-mult="1.5">1.5×</button>
+        <button class="speedBtn" data-mult="2">2×</button>
       </div>
       <button id="typingBtn" class="iconBtn" title="打字模式" aria-pressed="false" data-i18n-title="twTip" data-i18n-aria="twAria"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><line x1="7" y1="10" x2="7" y2="10.01"/><line x1="11" y1="10" x2="11" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="17" y1="14" x2="17" y2="14.01"/><line x1="13" y1="14" x2="13" y2="14.01"/><line x1="9" y1="14" x2="9" y2="14.01"/></svg></button>
       <button id="autoBtn" class="iconBtn" title="自动阅读" aria-pressed="false" data-i18n-title="autoRead"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button>
@@ -37,169 +39,201 @@
       <button class="setTab" role="tab" aria-selected="false" data-tab="layout" data-i18n="tabLayout">排版</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="backup" data-i18n="tabBackup">备份</button>
       <button class="setTab" role="tab" aria-selected="false" data-tab="advanced" data-i18n="tabAdvanced">高级</button>
+      <div class="setTabIndicator" aria-hidden="true"></div>
       <button id="pinSettings" title="固定设置面板" aria-label="固定/浮动设置面板" aria-pressed="false" data-i18n-title="pinTip" data-i18n-aria="pinAria"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3.5 3.5H6.5L10 10z"/><line x1="12" y1="13.5" x2="12" y2="20"/><line x1="7" y1="20" x2="17" y2="20"/></svg></button>
     </div>
     <div class="setPages">
     <div class="setPage" data-page="appearance">
-    <div class="settingSection">Language 语言</div>
-    <div class="settingRow">
-      <div class="themeChips">
-        <button class="themeChip langChip" data-lang="" data-i18n="langAuto">自动</button>
-        <button class="themeChip langChip" data-lang="zh">中文</button>
-        <button class="themeChip langChip" data-lang="en">English</button>
+    <div class="setCard">
+    <div class="setCardTitle">Language 语言</div>
+      <div class="settingRow">
+        <div class="themeChips">
+          <button class="themeChip langChip" data-lang="" data-i18n="langAuto">自动</button>
+          <button class="themeChip langChip" data-lang="zh">中文</button>
+          <button class="themeChip langChip" data-lang="en">English</button>
+        </div>
       </div>
-    </div>
-    <div class="settingSection" data-i18n="secTheme">系统主题</div>
-    <div class="settingRow">
-      <div class="themeChips">
-        <button class="themeChip" data-theme="light" data-i18n="themeLight">米白</button>
-        <button class="themeChip" data-theme="white" data-i18n="themeWhite">纯白</button>
-        <button class="themeChip" data-theme="sepia" data-i18n="themeSepia">羊皮纸</button>
-        <button class="themeChip" data-theme="green" data-i18n="themeGreen">护眼绿</button>
-        <button class="themeChip" data-theme="dark" data-i18n="themeDark">深色</button>
       </div>
-    </div>
-    <div class="settingSection" data-i18n="secCustom">自定义主题</div>
-    <div class="settingRow">
-      <div id="slotChips" class="themeChips"></div>
-    </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="ctBgLabel">正文背景</span>
-      <input id="ctBg" type="color" aria-label="自定义正文背景色" data-i18n-aria="colorAriaBg">
-    </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="ctFgLabel">文字颜色</span>
-      <input id="ctFg" type="color" aria-label="自定义文字颜色" data-i18n-aria="colorAriaFg">
-    </div>
-    <button id="advToggle" class="advToggle" aria-expanded="false"><span class="advArrow">▸</span> <span data-i18n="advMore">更多颜色</span></button>
-    <div id="advBlock" class="advBlock" hidden>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advUi">界面底色</span>
-        <input id="advUi" type="color" aria-label="界面底色" data-i18n-aria="advUiAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secTheme">系统主题</div>
+      <div class="settingRow">
+        <div class="themeChips">
+          <button class="themeChip" data-theme="light" data-i18n="themeLight">米白</button>
+          <button class="themeChip" data-theme="white" data-i18n="themeWhite">纯白</button>
+          <button class="themeChip" data-theme="sepia" data-i18n="themeSepia">羊皮纸</button>
+          <button class="themeChip" data-theme="green" data-i18n="themeGreen">护眼绿</button>
+          <button class="themeChip" data-theme="dark" data-i18n="themeDark">深色</button>
+        </div>
       </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advFg">界面文字</span>
-        <input id="advFg" type="color" aria-label="界面文字颜色" data-i18n-aria="advFgAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
       </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advMuted">次要文字</span>
-        <input id="advMuted" type="color" aria-label="次要文字颜色" data-i18n-aria="advMutedAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secCustom">自定义主题</div>
+      <div class="settingRow">
+        <div id="slotChips" class="themeChips"></div>
       </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advBorder">边框</span>
-        <input id="advBorder" type="color" aria-label="边框颜色" data-i18n-aria="advBorderAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="ctBgLabel">正文背景</span>
+        <input id="ctBg" type="color" aria-label="自定义正文背景色" data-i18n-aria="colorAriaBg">
       </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advButton">按钮</span>
-        <input id="advButton" type="color" aria-label="按钮颜色" data-i18n-aria="advButtonAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="ctFgLabel">文字颜色</span>
+        <input id="ctFg" type="color" aria-label="自定义文字颜色" data-i18n-aria="colorAriaFg">
       </div>
-      <div class="advRow">
-        <span class="settingLabel" data-i18n="advAccent">强调色</span>
-        <input id="advAccent" type="color" aria-label="强调色" data-i18n-aria="advAccentAria">
-        <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+      <button id="advToggle" class="advToggle" aria-expanded="false"><span class="advArrow">▸</span> <span data-i18n="advMore">更多颜色</span></button>
+      <div id="advBlock" class="advBlock" hidden>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advUi">界面底色</span>
+          <input id="advUi" type="color" aria-label="界面底色" data-i18n-aria="advUiAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advFg">界面文字</span>
+          <input id="advFg" type="color" aria-label="界面文字颜色" data-i18n-aria="advFgAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advMuted">次要文字</span>
+          <input id="advMuted" type="color" aria-label="次要文字颜色" data-i18n-aria="advMutedAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advBorder">边框</span>
+          <input id="advBorder" type="color" aria-label="边框颜色" data-i18n-aria="advBorderAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advButton">按钮</span>
+          <input id="advButton" type="color" aria-label="按钮颜色" data-i18n-aria="advButtonAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
+        <div class="advRow">
+          <span class="settingLabel" data-i18n="advAccent">强调色</span>
+          <input id="advAccent" type="color" aria-label="强调色" data-i18n-aria="advAccentAria">
+          <button class="advAuto" data-i18n-title="advAutoTitle" title="恢复自动派生">↺</button>
+        </div>
       </div>
-    </div>
-    <button id="ctReset" class="settingReset" data-i18n="ctReset">重置本槽为初始配色</button>
+      <button id="ctReset" class="settingReset" data-i18n="ctReset">重置本槽为初始配色</button>
+      </div>
     </div>
     <div class="setPage" data-page="backup" hidden>
-    <div class="settingSection" data-i18n="secShelf">书架</div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="shelfViewLabel">视图</span>
-      <div class="themeChips" id="viewChips" role="group" aria-label="书架视图">
-        <button class="themeChip viewChip" data-view="grid" data-i18n="viewGrid">网格</button>
-        <button class="themeChip viewChip" data-view="list" data-i18n="viewList">列表</button>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secShelf">书架</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="shelfViewLabel">视图</span>
+        <div class="themeChips" id="viewChips" role="group" aria-label="书架视图">
+          <button class="themeChip viewChip" data-view="grid" data-i18n="viewGrid">网格</button>
+          <button class="themeChip viewChip" data-view="list" data-i18n="viewList">列表</button>
+        </div>
       </div>
-    </div>
-    <div class="settingSection" data-i18n="secBackup">数据备份</div>
-    <div class="settingRow">
-      <button id="exportData" class="textBtn" data-i18n="exportData">导出阅读数据</button>
-      <button id="importData" class="textBtn" data-i18n="importData">导入阅读数据</button>
-    </div>
+      </div>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secBackup">数据备份</div>
+      <div class="settingRow">
+        <button id="exportData" class="textBtn" data-i18n="exportData">导出阅读数据</button>
+        <button id="importData" class="textBtn" data-i18n="importData">导入阅读数据</button>
+      </div>
+      </div>
     </div>
     <div class="setPage" data-page="advanced" hidden>
-    <div class="settingSection" data-i18n="secAdvanced">高级功能</div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="pinyinLabel">外挂注音</span>
-      <div id="annotateSeg" class="segCtl" role="group" aria-label="注音模式" data-i18n-aria="pinyinAria">
-        <button type="button" data-ann="off" data-i18n="annOff">关</button>
-        <button type="button" data-ann="pinyin" data-i18n="annPinyin">拼音</button>
-        <button type="button" data-ann="romaji" data-i18n="annRomaji">罗马音</button>
-        <button type="button" data-ann="pinyinOnly" data-i18n="annPyOnly">纯拼音</button>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secAdvanced">高级功能</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="pinyinLabel">外挂注音</span>
+        <div id="annotateSeg" class="segCtl" role="group" aria-label="注音模式" data-i18n-aria="pinyinAria">
+          <button type="button" data-ann="off" data-i18n="annOff">关</button>
+          <button type="button" data-ann="pinyin" data-i18n="annPinyin">拼音</button>
+          <button type="button" data-ann="romaji" data-i18n="annRomaji">罗马音</button>
+          <button type="button" data-ann="pinyinOnly" data-i18n="annPyOnly">纯拼音</button>
+        </div>
       </div>
-    </div>
-    <div class="settingHint" data-i18n="pinyinSessionTip">拼音为汉字标注，罗马音为日语假名标注（书内假名注音一并转换）；不影响书籍自带注音的显示。开启状态不做持久化，每次打开应用需重新开启。</div>
-    <div class="settingRow">
-      <label class="switch" data-i18n-title="sndTip">
-        <input id="typingSoundToggle" type="checkbox" aria-label="打字音效" data-i18n-aria="sndAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="sndLabel">打字音效</span>
-    </div>
-    <div class="settingHint" data-i18n="sndHint">打字模式下按键播放打字声，打错播放错误提示音；偏好会保存并随备份导出。</div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="twModeLabel">中文打字方式</span>
-      <div id="twModeSeg" class="segCtl" role="group" aria-label="中文打字方式" data-i18n-aria="twModeAria">
-        <button type="button" data-twmode="pinyin" data-i18n="twModePinyin">拼音对照</button>
-        <button type="button" data-twmode="real" data-i18n="twModeReal">输入法真打</button>
+      <div class="settingHint" data-i18n="pinyinSessionTip">拼音为汉字标注，罗马音为日语假名标注（书内假名注音一并转换）；不影响书籍自带注音的显示。开启状态不做持久化，每次打开应用需重新开启。</div>
+      <div class="settingRow">
+        <label class="switch" data-i18n-title="sndTip">
+          <input id="typingSoundToggle" type="checkbox" aria-label="打字音效" data-i18n-aria="sndAria">
+          <span class="switchTrack"><span class="switchThumb"></span></span>
+        </label>
+        <span class="settingLabel" data-i18n="sndLabel">打字音效</span>
       </div>
-    </div>
-    <div class="settingHint" data-i18n="twModeHint">拼音对照：关闭输入法按拼音字母逐键对比；输入法真打：正常用输入法打字上屏，按上屏汉字与原文比对，英文直接照打。</div>
+      <div class="settingHint" data-i18n="sndHint">打字模式下按键播放打字声，打错播放错误提示音；偏好会保存并随备份导出。</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="twModeLabel">中文打字方式</span>
+        <div id="twModeSeg" class="segCtl" role="group" aria-label="中文打字方式" data-i18n-aria="twModeAria">
+          <button type="button" data-twmode="pinyin" data-i18n="twModePinyin">拼音对照</button>
+          <button type="button" data-twmode="real" data-i18n="twModeReal">输入法真打</button>
+        </div>
+      </div>
+      <div class="settingHint" data-i18n="twModeHint">拼音对照：关闭输入法按拼音字母逐键对比；输入法真打：正常用输入法打字上屏，按上屏汉字与原文比对，英文直接照打。</div>
+      </div>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secAutoRead">自动阅读</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="autoScrollSpeed">滚动速度</span>
+        <input id="autoScrollSpeedNum" class="settingNum" type="number" min="0.01" max="5" step="0.01" aria-label="滚动速度屏每秒" data-i18n-aria="autoScrollSpeedAria">
+        <span class="settingUnit" data-i18n="autoScrollSpeedUnit">屏/秒</span>
+        <span class="settingHintInline" data-i18n="autoScrollSpeedHint">每秒滚动的视口倍数</span>
+      </div>
+      <div class="settingHint" data-i18n="autoReadTip">工具栏倍数按钮调节自动阅读快慢。滚动速度为每秒视口倍数（1 = 每秒滚过一屏），翻页间隔为每页停留毫秒数。</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="autoPageInterval">翻页间隔</span>
+        <input id="autoPageIntervalNum" class="settingNum" type="number" min="500" max="15000" step="100" aria-label="翻页间隔毫秒" data-i18n-aria="autoPageIntervalAria">
+        <span class="settingUnit">ms</span>
+        <span class="settingHintInline" data-i18n="autoPageIntervalHint">翻页模式下每页停留时间</span>
+      </div>
     </div>
     <div class="setPage" data-page="layout" hidden>
-    <div class="settingSection" data-i18n="secType">排版</div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="fontSize">字号</span>
-      <input id="fontSizeRange" type="range" min="10" max="36" step="1" aria-label="字体大小" data-i18n-aria="fontSizeRangeAria">
-      <button id="fsMinus" class="stepBtn" title="减小字体" data-i18n-title="fsMinusTip">A−</button>
-      <button id="fsPlus" class="stepBtn" title="增大字体" data-i18n-title="fsPlusTip">A+</button>
-      <input id="fontSizeNum" class="settingNum" type="number" min="10" max="36" step="1" aria-label="字体大小数值" data-i18n-aria="fontSizeNumAria">
-    </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="lineHeight">行距</span>
-      <input id="lineHeightRange" type="range" min="140" max="240" step="5" aria-label="行距" data-i18n-aria="lineHeightRangeAria">
-      <button id="lhMinus" class="stepBtn" title="减小行距" data-i18n-title="lhMinusTip">−</button>
-      <button id="lhPlus" class="stepBtn" title="增大行距" data-i18n-title="lhPlusTip">＋</button>
-      <input id="lineHeightNum" class="settingNum" type="number" min="1.4" max="2.4" step="0.05" aria-label="行距数值" data-i18n-aria="lineHeightNumAria">
-    </div>
-    <div class="settingRow">
-      <span class="settingLabel" data-i18n="fontFamily">字体</span>
-      <select id="fontFamilySel" aria-label="正文字体" data-i18n-aria="fontFamilyAria">
-        <option value="serif" data-i18n="fontSerif">衬线（宋）</option>
-        <option value="sans" data-i18n="fontSans">无衬线（黑）</option>
-      </select>
-    </div>
-    <div class="settingRow">
-      <label class="switch" title="开启后书籍自带的字体声明(含内嵌字体)优先于阅读器字体设置" data-i18n-title="bookFontTip">
-        <input id="bookFontToggle" type="checkbox" aria-label="书籍字体优先" data-i18n-aria="bookFontAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="bookFontLabel">书籍字体优先</span>
-    </div>
-    <div class="settingRow">
-      <label class="switch" title="传统竖排(右起左行)，仅翻页模式；开启时自动切换到翻页模式" data-i18n-title="vertTip">
-        <input id="verticalToggle" type="checkbox" aria-label="竖排阅读" data-i18n-aria="vertAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="vertLabel">竖排阅读</span>
-    </div>
-    <div class="settingSection" data-i18n="secWidth">正文宽度</div>
-    <div class="settingRow">
-      <label class="switch" title="开启后正文限制最大宽度" data-i18n-title="maxWTip">
-        <input id="contentMaxToggle" type="checkbox" aria-label="限制正文宽度" data-i18n-aria="maxWAria">
-        <span class="switchTrack"><span class="switchThumb"></span></span>
-      </label>
-      <span class="settingLabel" data-i18n="maxWLabel">限宽</span>
-      <input id="contentMaxRange" type="range" min="480" max="1920" step="10" aria-label="正文最大宽度" data-i18n-aria="maxWRangeAria">
-      <button id="cwMinus" class="stepBtn" title="减小宽度" data-i18n-title="cwMinusTip">−</button>
-      <button id="cwPlus" class="stepBtn" title="增大宽度" data-i18n-title="cwPlusTip">＋</button>
-      <input id="contentMaxNum" class="settingNum" type="number" min="480" max="1920" step="10" aria-label="正文宽度数值" data-i18n-aria="contentMaxNumAria">
-    </div>
-    <button id="sideReset" class="settingReset" data-i18n="sideReset">恢复默认</button>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secType">排版</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="fontSize">字号</span>
+        <input id="fontSizeRange" type="range" min="10" max="36" step="1" aria-label="字体大小" data-i18n-aria="fontSizeRangeAria">
+        <button id="fsMinus" class="stepBtn" title="减小字体" data-i18n-title="fsMinusTip">A−</button>
+        <button id="fsPlus" class="stepBtn" title="增大字体" data-i18n-title="fsPlusTip">A+</button>
+        <input id="fontSizeNum" class="settingNum" type="number" min="10" max="36" step="1" aria-label="字体大小数值" data-i18n-aria="fontSizeNumAria">
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="lineHeight">行距</span>
+        <input id="lineHeightRange" type="range" min="140" max="240" step="5" aria-label="行距" data-i18n-aria="lineHeightRangeAria">
+        <button id="lhMinus" class="stepBtn" title="减小行距" data-i18n-title="lhMinusTip">−</button>
+        <button id="lhPlus" class="stepBtn" title="增大行距" data-i18n-title="lhPlusTip">＋</button>
+        <input id="lineHeightNum" class="settingNum" type="number" min="1.4" max="2.4" step="0.05" aria-label="行距数值" data-i18n-aria="lineHeightNumAria">
+      </div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="fontFamily">字体</span>
+        <select id="fontFamilySel" aria-label="正文字体" data-i18n-aria="fontFamilyAria">
+          <option value="serif" data-i18n="fontSerif">衬线（宋）</option>
+          <option value="sans" data-i18n="fontSans">无衬线（黑）</option>
+        </select>
+      </div>
+      <div class="settingRow">
+        <label class="switch" title="开启后书籍自带的字体声明(含内嵌字体)优先于阅读器字体设置" data-i18n-title="bookFontTip">
+          <input id="bookFontToggle" type="checkbox" aria-label="书籍字体优先" data-i18n-aria="bookFontAria">
+          <span class="switchTrack"><span class="switchThumb"></span></span>
+        </label>
+        <span class="settingLabel" data-i18n="bookFontLabel">书籍字体优先</span>
+      </div>
+      <div class="settingRow">
+        <label class="switch" title="传统竖排(右起左行)，仅翻页模式；开启时自动切换到翻页模式" data-i18n-title="vertTip">
+          <input id="verticalToggle" type="checkbox" aria-label="竖排阅读" data-i18n-aria="vertAria">
+          <span class="switchTrack"><span class="switchThumb"></span></span>
+        </label>
+        <span class="settingLabel" data-i18n="vertLabel">竖排阅读</span>
+      </div>
+      </div>
+    <div class="setCard">
+    <div class="setCardTitle" data-i18n="secWidth">正文宽度</div>
+      <div class="settingRow">
+        <label class="switch" title="开启后正文限制最大宽度" data-i18n-title="maxWTip">
+          <input id="contentMaxToggle" type="checkbox" aria-label="限制正文宽度" data-i18n-aria="maxWAria">
+          <span class="switchTrack"><span class="switchThumb"></span></span>
+        </label>
+        <span class="settingLabel" data-i18n="maxWLabel">限宽</span>
+        <input id="contentMaxRange" type="range" min="480" max="1920" step="10" aria-label="正文最大宽度" data-i18n-aria="maxWRangeAria">
+        <button id="cwMinus" class="stepBtn" title="减小宽度" data-i18n-title="cwMinusTip">−</button>
+        <button id="cwPlus" class="stepBtn" title="增大宽度" data-i18n-title="cwPlusTip">＋</button>
+        <input id="contentMaxNum" class="settingNum" type="number" min="480" max="1920" step="10" aria-label="正文宽度数值" data-i18n-aria="contentMaxNumAria">
+      </div>
+      <button id="sideReset" class="settingReset" data-i18n="sideReset">恢复默认</button>
+      </div>
     </div>
     </div>
     </div>

@@ -121,6 +121,9 @@ const state = {
   pageIdx: 0,
   filePages: 0,
   speed: Math.min(10, Math.max(1, Number(localStorage.getItem("autoSpeed")) || 4)),
+  autoSpeedMult: [0.5, 0.75, 1, 1.5, 2].includes(Number(localStorage.getItem("autoSpeedMult"))) ? Number(localStorage.getItem("autoSpeedMult")) : 1,
+  autoScrollSpeed: (() => { const v = Number(localStorage.getItem("autoScrollSpeed")); return v >= 0.01 && v <= 5 ? v : 0.8; })(),
+  autoPageInterval: (() => { const v = Number(localStorage.getItem("autoPageInterval")); return v >= 500 && v <= 15000 ? v : 3500; })(),
   contentMax: (() => {
     const v = Number(localStorage.getItem("contentMax"));
     if (Number.isFinite(v) && v >= 480) return Math.min(1920, Math.round(v));
@@ -303,7 +306,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","contentMax","contentLimited","annotate","typingSound","twReal"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","autoSpeedMult","autoScrollSpeed","autoPageInterval","contentMax","contentLimited","annotate","typingSound","twReal"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -377,6 +380,9 @@ function restorePrefsFromStorage() {
   state.customSlots = loadCustomSlots();
   state.customSlotIdx = Math.min(2, Math.max(0, Number(localStorage.getItem("customSlot")) || 0));
   state.speed = Math.min(10, Math.max(1, Number(localStorage.getItem("autoSpeed")) || 4));
+  state.autoSpeedMult = [0.5, 0.75, 1, 1.5, 2].includes(Number(localStorage.getItem("autoSpeedMult"))) ? Number(localStorage.getItem("autoSpeedMult")) : 1;
+  state.autoScrollSpeed = (() => { const v = Number(localStorage.getItem("autoScrollSpeed")); return v >= 0.01 && v <= 5 ? v : 0.8; })();
+  state.autoPageInterval = (() => { const v = Number(localStorage.getItem("autoPageInterval")); return v >= 500 && v <= 15000 ? v : 3500; })();
   state.contentMax = (() => {
     const v = Number(localStorage.getItem("contentMax"));
     if (Number.isFinite(v) && v >= 480) return Math.min(1920, Math.round(v));
@@ -400,7 +406,9 @@ syncAnnotateSeg();
 /* 词典预热: 曾开启过注音的设备启动时静默预拉(SW缓存命中, 几乎零开销), 首次点击开启零等待 */
 if (localStorage.getItem("pinyinWarmed") === "1") ensurePinyinLib().catch(() => {});
   $("contentMaxToggle").checked = state.contentLimited;
-  $("speedRange").value = String(state.speed);
+  syncSpeedBtns();
+  $("autoScrollSpeedNum").value = state.autoScrollSpeed;
+  $("autoPageIntervalNum").value = state.autoPageInterval;
   $("modeBtn").innerHTML = state.readMode === "paged" ? ICONS.paged : ICONS.scroll;
   $("modeBtn").setAttribute("aria-pressed", String(state.readMode === "paged"));
   syncContentInputs();
@@ -1718,7 +1726,7 @@ function autoTick(ts) {
   const win = $("bookFrame").contentWindow;
   try {
     if (win?.document && !autoJumping && state.readMode === "paged") {
-      const delay = Math.max(500, 6300 - state.speed * 600);
+      const delay = Math.max(500, state.autoPageInterval / state.autoSpeedMult);
       if (pagedCtx
           && performance.now() - autoChapterStart >= delay
           && performance.now() - lastAutoFlip >= delay) {
@@ -1730,7 +1738,7 @@ function autoTick(ts) {
       }
     } else if (win?.document && !autoJumping) {
       /* 竖排: 自动滚动前进=物理向左(负left); 横排: 物理向下 */
-      const autoDelta = state.speed * 15 * dt;
+      const autoDelta = state.autoScrollSpeed * win.innerHeight * state.autoSpeedMult * dt;
       if (state.vertical) win.scrollBy({ left: -autoDelta, behavior: "instant" });
       else win.scrollBy({ top: autoDelta, behavior: "instant" });
       const docEl = win.document.documentElement;
@@ -2231,8 +2239,23 @@ $("advToggle").onclick = () => {
   $("advToggle").setAttribute("aria-expanded", String(open));
 };
 $("autoBtn").onclick = () => { if (state.book) setAuto(!state.auto); };
-$("speedRange").value = String(state.speed);
-$("speedRange").oninput = e => { state.speed = Number(e.target.value); localStorage.setItem("autoSpeed", e.target.value); };
+/* 速度倍数按钮 */
+function syncSpeedBtns() {
+  for (const b of document.querySelectorAll(".speedBtn")) b.classList.toggle("active", Number(b.dataset.mult) === state.autoSpeedMult);
+}
+for (const b of document.querySelectorAll(".speedBtn")) {
+  b.onclick = () => {
+    state.autoSpeedMult = Number(b.dataset.mult);
+    localStorage.setItem("autoSpeedMult", String(state.autoSpeedMult));
+    syncSpeedBtns();
+  };
+}
+syncSpeedBtns();
+/* 自动阅读高级设置 */
+$("autoScrollSpeedNum").value = state.autoScrollSpeed;
+$("autoScrollSpeedNum").oninput = e => { state.autoScrollSpeed = Math.min(5, Math.max(0.01, Number(e.target.value) || 0.8)); localStorage.setItem("autoScrollSpeed", String(state.autoScrollSpeed)); };
+$("autoPageIntervalNum").value = state.autoPageInterval;
+$("autoPageIntervalNum").oninput = e => { state.autoPageInterval = Math.min(15000, Math.max(500, Number(e.target.value) || 3500)); localStorage.setItem("autoPageInterval", String(state.autoPageInterval)); };
 /* 设置抽屉开合(与目录侧栏同范式): .open类驱动, 固定态不受外点/Esc影响 */
 function setSettingsOpen(on) {
   $("settingsPanel").classList.toggle("open", on);
@@ -2639,6 +2662,12 @@ for (const b of document.querySelectorAll(".viewChip")) {
 syncViewChips();
 
 /* ---------- 设置面板分页: 外观/排版/备份 ---------- */
+const tabIndicator = document.querySelector(".setTabIndicator");
+function moveTabIndicator(tab) {
+  if (!tabIndicator || !tab) return;
+  tabIndicator.style.width = tab.offsetWidth + "px";
+  tabIndicator.style.left = (tab.offsetLeft) + "px";
+}
 for (const b of document.querySelectorAll(".setTab")) {
   b.onclick = () => {
     for (const t of document.querySelectorAll(".setTab")) {
@@ -2647,8 +2676,10 @@ for (const b of document.querySelectorAll(".setTab")) {
       t.setAttribute("aria-selected", String(on));
     }
     for (const pg of document.querySelectorAll(".setPage")) pg.hidden = pg.dataset.page !== b.dataset.tab;
+    moveTabIndicator(b);
   };
 }
+moveTabIndicator(document.querySelector(".setTab.active"));
 
 /* 全局键盘兜底: 唯一入口挂window(冒泡已覆盖document); 书架编辑模式的Esc也依赖它 */
 window.addEventListener("keydown", handleKey);
