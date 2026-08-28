@@ -306,7 +306,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","autoSpeedMult","autoScrollSpeed","autoPageInterval","contentMax","contentLimited","annotate","typingSound","twReal"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","autoSpeedMult","autoScrollSpeed","autoPageInterval","contentMax","contentLimited","typingSound","twReal"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -1845,6 +1845,8 @@ function applyI18n() {
   invalidateLangCache();
   document.documentElement.lang = currentLang() === "en" ? "en" : "zh-CN";
   applyI18nStatic();
+  /* 标签文案随语言变化宽度, 重算激活tab下划线位置 */
+  if (tabIndicator) moveTabIndicator(document.querySelector(".setTab.active"));
   /* 静态覆盖会重置章节标签, 开书状态下恢复为当前单元标题 */
   if (state.book) {
     const u = state.navUnits[state.unitIdx];
@@ -2251,11 +2253,13 @@ for (const b of document.querySelectorAll(".speedBtn")) {
   };
 }
 syncSpeedBtns();
-/* 自动阅读高级设置 */
+/* 自动阅读高级设置: 键入即钳制state并持久化; 失焦时把规范化值写回输入框, 避免显示越界数字 */
 $("autoScrollSpeedNum").value = state.autoScrollSpeed;
 $("autoScrollSpeedNum").oninput = e => { state.autoScrollSpeed = Math.min(5, Math.max(0.01, Number(e.target.value) || 0.8)); localStorage.setItem("autoScrollSpeed", String(state.autoScrollSpeed)); };
+$("autoScrollSpeedNum").onchange = e => { e.target.value = state.autoScrollSpeed; };
 $("autoPageIntervalNum").value = state.autoPageInterval;
 $("autoPageIntervalNum").oninput = e => { state.autoPageInterval = Math.min(15000, Math.max(500, Number(e.target.value) || 3500)); localStorage.setItem("autoPageInterval", String(state.autoPageInterval)); };
+$("autoPageIntervalNum").onchange = e => { e.target.value = state.autoPageInterval; };
 /* 设置抽屉开合(与目录侧栏同范式): .open类驱动, 固定态不受外点/Esc影响 */
 function setSettingsOpen(on) {
   $("settingsPanel").classList.toggle("open", on);
@@ -2280,6 +2284,12 @@ $("sideReset").onclick = () => {
 };
 $("fontFamilySel").onchange = e => { state.fontFamily = e.target.value; applyTypography(); rerenderReader(); };
 $("verticalToggle").onchange = e => {
+  if (e.target.checked && state.typing) {
+    /* 打字模式暂不支持竖排: 拒绝切换并回滚开关, 否则重渲染会在竖排翻页文档里误入打字拾取态 */
+    e.target.checked = false;
+    toast(t("twNoVert"));
+    return;
+  }
   state.vertical = e.target.checked;
   localStorage.setItem("vertical", state.vertical ? "1" : "0");
   if (!state.book) return;
@@ -2385,7 +2395,6 @@ bindEl("typingInput", el => el.addEventListener("input", e => {
   const inp = e.target;
   const v = inp.value;
   /* 真打字模式: 只消费已上屏文本(组合中的原始拼音会误配); 提交后清空缓冲 */
-  window.__lastBranch = state.twReal ? "real" : "pinyin";
   if (state.twReal) {
     if (!e.isComposing && twState?.phase !== "pick") {
       const chunk = v.slice(twProcIdx).replace(/\s+/g, "");

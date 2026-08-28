@@ -6,7 +6,6 @@ const I18N_STRINGS = {
     /* 工具栏 */
     toc: "目录", search: "搜索", autoRead: "自动阅读",
     modeTip: "切换滚动/翻页模式", settings: "阅读设置", menu: "菜单",
-    speedSlow: "慢", speedFast: "快", autoReadSpeedAria: "自动阅读速度",
     closeBook: "关闭书籍",
     /* 设置面板 */
     secTheme: "系统主题", themeLight: "米白", themeWhite: "纯白", themeSepia: "羊皮纸", themeGreen: "护眼绿", themeDark: "深色",
@@ -84,7 +83,6 @@ const I18N_STRINGS = {
   en: {
     toc: "Contents", search: "Search", autoRead: "Auto-read",
     modeTip: "Toggle scroll/paged mode", settings: "Reading settings", menu: "Menu",
-    speedSlow: "Slow", speedFast: "Fast", autoReadSpeedAria: "Auto-read speed",
     closeBook: "Close book",
     secTheme: "Built-in themes", themeLight: "Cream", themeWhite: "White", themeSepia: "Sepia", themeGreen: "Green", themeDark: "Dark",
     secCustom: "Custom themes",

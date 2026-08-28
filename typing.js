@@ -388,16 +388,16 @@ function twUpdateHint() {
   const st = twState;
   if (!st || st.phase === "pick" || !st.tokens.length) { el.textContent = ""; return; }
   if (state.twReal) {
-    const t = twCurTokenByPos();
-    if (!t) { el.textContent = t("twBarHint"); return; }
+    const tok = twCurTokenByPos();
+    if (!tok) { el.textContent = ""; return; }
     let hint = "";
-    const srcPart = t.src.slice(0, 4);
+    const srcPart = tok.src.slice(0, 4);
     if (TW_KANA.test(srcPart)) hint = toRomaji(srcPart);
     else if (TW_HAN.test(srcPart)) hint = [...srcPart].map(twPinyin).join(" ");
     el.textContent = hint ? ` ${hint}` : "";
   } else {
-    const t = st.tokens[st.idx];
-    el.textContent = t ? ` ${t.expect.slice(t.got)}` : "";
+    const tok = st.tokens[st.idx];
+    el.textContent = tok ? ` ${tok.expect.slice(tok.got)}` : "";
   }
 }
 
