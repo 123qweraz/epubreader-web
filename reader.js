@@ -98,6 +98,8 @@ const state = {
   annotate: "off",
   /* 打字模式: 会话级, 照书打字驱动阅读(typing.js) */
   typing: false,
+  /* 逐字阅读(刮刮乐)模式: 会话级, 正文涂层隐藏鼠标划过逐字显现(scratch.js) */
+  scratch: false,
   /* 马克笔高亮: 会话级开关 + 记忆的颜色(划词标记, 导图联动); once=单击进入的单次模式 */
   marker: false,
   markerOnce: false,
@@ -705,8 +707,9 @@ async function renderShelf() {
 
 function closeBook() {
   setAuto(false);
-  /* 会话级模式随书关闭复位(打字/马克笔), 避免残留状态吞掉后续快捷键 */
+  /* 会话级模式随书关闭复位(打字/马克笔/逐字阅读), 避免残留状态吞掉后续快捷键 */
   if (state.typing) { state.typing = false; twReset(); syncTypingBtn(); $("typingBar").hidden = true; }
+  if (state.scratch) { state.scratch = false; scratchReset(); syncScratchBtn(); }
   if (state.marker) { state.marker = false; state.markerOnce = false; syncMarkerUI(); }
   flushProgress();
   state.urls.forEach(u => URL.revokeObjectURL(u));
@@ -1452,6 +1455,8 @@ function runAfterLoad(win, doc, fragment, opts, ratio) {
     doc.__twBound = true;
     twEnterPick(doc);
   }
+  /* 逐字阅读: 新章节涂覆+逐字显现(scratchEnter 幂等: 每文档只绑一次监听) */
+  if (state.scratch) scratchEnter(doc);
   /* 马克笔: 模式光标 + 已存高亮回贴 + 划选/点击处理(每文档绑一次) */
   if (state.marker) doc.body.classList.add("mkMode");
   hlApplyAll(doc);
@@ -1780,6 +1785,8 @@ function handleKey(e) {
   }
   /* 马克笔模式下Esc退出(打字模式优先消费自己的Esc) */
   if (state.marker && e.key === "Escape" && !state.typing) { setMarker(false); return; }
+  /* 逐字阅读模式: Esc退出 */
+  if (state.scratch && e.key === "Escape") { setScratch(false); return; }
   /* 打字模式优先: 字母键喂入引擎(输入条未聚焦时的兜底路径); 空格禁用(避免误触翻段); Esc退出, Tab跳词 */
   if (state.typing) {
     if (e.key === "Escape") { setTyping(false); return; }
@@ -2368,6 +2375,7 @@ function setTyping(on) {
   if (!state.book) return;
   if (on === state.typing) return;
   if (on) {
+    if (state.scratch) setScratch(false);   /* 与逐字阅读互斥 */
     if (state.vertical) { toast(t("twNoVert")); return; }
     state.typing = true;
     syncTypingBtn();
@@ -2390,6 +2398,29 @@ function setTyping(on) {
   }
 }
 $("typingBtn").onclick = () => setTyping(!state.typing);
+
+/* ---- 逐字阅读(刮刮乐)开关 ---- */
+function syncScratchBtn() {
+  const b = $("scratchBtn");
+  b.classList.toggle("active", state.scratch);
+  b.setAttribute("aria-pressed", String(state.scratch));
+}
+function setScratch(on) {
+  if (!state.book) { toast(t("scrNoBook")); return; }
+  if (on === state.scratch) return;
+  if (on) {
+    if (state.typing) setTyping(false);   /* 与打字模式互斥 */
+    state.scratch = true;
+    syncScratchBtn();
+    const doc = $("bookFrame")?.contentDocument;
+    if (doc?.body) scratchEnter(doc);
+  } else {
+    state.scratch = false;
+    scratchReset();
+    syncScratchBtn();
+  }
+}
+$("scratchBtn").onclick = () => setScratch(!state.scratch);
 /* 输入条喂字: 兼容直接字母与中文IME拼音组合(组合中逐字符实时喂, 提交后清空缓冲) */
 bindEl("typingInput", el => el.addEventListener("input", e => {
   const inp = e.target;

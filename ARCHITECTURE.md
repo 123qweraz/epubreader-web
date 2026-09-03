@@ -40,17 +40,19 @@ Blob/File、MessageChannel（宏任务让出，后台标签不被钳制）、DOM
 index.html   252 行   UI 骨架 + 脚本链 + 内联 SW 版本握手
 engine.js    259 行   格式解析引擎(纯函数层): ZIP/CRC32/路径工具/XML解析 + EPUB(container/OPF/nav/NCX/封面) + TXT(编码/分章)
 pager.js     309 行   排版引擎: 翻页(CSS columns)+滚动双模式/虚拟化/触摸滚轮手势/沉浸模式/模式切换(私有状态, 函数API对外)
-reader.js   2177 行   UI 编排与渲染管线(state 单点/存储/书架/搜索/渲染/主题/设置绑定)
+reader.js   2177 行起 UI 编排与渲染管线(state 单点/存储/书架/搜索/渲染/主题/设置绑定)
 i18n.js      172 行   翻译表
 pinyin.js    166 行   外挂注音调度引擎(独立于核心, 三触点: pyDispatch/pyMarkMove/pyReset)
+typing.js    414 行   打字模式调度引擎(独立于核心, 触点: twEnterPick/twReset)
+scratch.js   128 行   逐字阅读(刮刮乐)调度引擎(独立于核心, 触点: scratchEnter/scratchReset)
 sw.js         80 行   预缓存 SHELL 清单 + 缓存策略
 vendor/             pinyin-pro.min.js
-tests/smoke.mjs 497 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 59 项断言)
+tests/smoke.mjs 1129 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 124 项断言)
 ```
 
 ### 脚本链与依赖契约
 
-`i18n.js → pinyin.js → engine.js → pager.js → reader.js`(经典脚本全局共享):
+`i18n.js → pinyin.js → typing.js → scratch.js → engine.js → pager.js → mindmap.js → reader.js`(经典脚本全局共享):
 
 - **engine.js** 纯函数无状态; 运行期用 i18n 的 `t()`(仅函数体内)
 - **pager.js** 顶层仅声明无执行语句; 运行期依赖 reader 的 `state/$/t/toast/showUnit/getPageHeight/REDUCED_MOTION` 与 pinyin 的 `pyMarkMove`(契约写在文件头)
@@ -116,9 +118,9 @@ tests/smoke.mjs 497 行   零依赖冒烟测试(内置静态服务器驱动真 C
 4. **潜在隐患备忘**：materializeResource 在 makeResourceUrl 失败时仍无条件摘除 data-rpath
    （.catch 吞错后清理照跑）——属健壮性缺口，下次动媒体管线时顺手加固
 5. **回归测试资产**：`tests/smoke.mjs` 已入库（零依赖, `node tests/smoke.mjs` 直接运行,
-   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 71 项断言覆盖开书/分章/书架/编辑模式/
-   备份往返/重链接/双视图/封面提取/注音会话级/i18n/a11y/野生书容错）。凡改解析/排版/
-   书架行为, 先跑冒烟再提交
+   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 124 项断言覆盖开书/分章/书架/编辑模式/
+   备份往返/重链接/双视图/封面提取/注音会话级/i18n/a11y/打字模式/逐字阅读/野生书容错）。
+   凡改解析/排版/书架或新增交互模式, 先跑冒烟再提交
 6. **经典脚本方法重名陷阱**：类里新增方法不可与既有同名（哪怕签名不同）——后者静默覆盖
    前者；ZipReader 曾因新增 `async text(name)` 覆盖同步解码器 `text(bytes,enc)`，
    未 await 的 Promise 漏进同步调用链引发诡异 TypeError。加方法前先 grep 全类

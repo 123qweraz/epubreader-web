@@ -647,6 +647,67 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6b-6. 逐字阅读(刮刮乐): 涂层隐藏 → 鼠标划过逐字显现 → Esc退出还原 ---- */
+  await evalJs(`openBookFile(window.__buildEpub("刮刮书"))`);
+  await sleep(900);
+  await evalJs(`document.getElementById("scratchBtn").click()`);
+  await sleep(400);
+  const sc0 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const scr = d.querySelector(".scr");
+    const cs = scr ? getComputedStyle(scr) : null;
+    return {
+      btnActive: document.getElementById("scratchBtn").classList.contains("active"),
+      typingOff: !state.typing,
+      n: d.querySelectorAll(".scr").length,
+      transparent: cs ? cs.color === "rgba(0, 0, 0, 0)" : false,
+      coated: cs ? cs.backgroundColor !== "rgba(0, 0, 0, 0)" : false,
+      hasStyle: !!d.getElementById("scrStyle")
+    };
+  })()`);
+  ok(sc0.btnActive && sc0.typingOff && sc0.n > 0, `逐字模式开启涂覆(${sc0.n}字已涂)`);
+  ok(sc0.transparent && sc0.coated && sc0.hasStyle, "涂层字透明+灰底(刮刮乐小格)");
+  /* 逐字精确显现: 指到哪字亮哪字, 邻字不动 */
+  await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const t = d.querySelector(".scr");
+    t.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }));
+  })()`);
+  await sleep(200);
+  const sc1 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const cur = d.querySelector(".scr.sd");
+    const nbr = cur?.nextElementSibling;
+    return { revealed: !!cur, char: cur?.textContent, nbrRevealed: !!nbr?.classList.contains("sd") };
+  })()`);
+  ok(sc1.revealed && !sc1.nbrRevealed, `逐字显现(${sc1.char}亮起, 邻字未亮)`);
+  /* 拖过多个字: 连续几个字同步点亮(第1字已亮, 再亮4个) */
+  await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const sibs = [...d.querySelectorAll(".scr")].filter(s => !s.classList.contains("sd")).slice(0, 4);
+    for (const t of sibs) t.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }));
+  })()`);
+  await sleep(150);
+  const sc2 = await evalJs(`document.getElementById("bookFrame").contentDocument.querySelectorAll(".scr.sd").length`);
+  ok(sc2 >= 5, `鼠标划过依次点亮(${sc2}字)`);
+  /* Esc退出还原: 涂层类清空、按钮复位、正文恢复可见 */
+  await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))`);
+  await sleep(300);
+  const sc3 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return {
+      btnOff: !document.getElementById("scratchBtn").classList.contains("active"),
+      noStyle: !d.getElementById("scrStyle"),
+      noSd: d.querySelectorAll(".scr.sd").length === 0,
+      visible: getComputedStyle(d.querySelector(".scr")).color !== "rgba(0, 0, 0, 0)"
+    };
+  })()`);
+  ok(sc3.btnOff && sc3.noStyle && sc3.noSd && sc3.visible, "Esc退出涂层还原文本");
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "刮刮书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
   const openWild = async (buildExpr, title, msg) => {
     await evalJs(`openBookFile(${buildExpr})`);
