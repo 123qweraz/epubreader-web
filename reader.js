@@ -1311,6 +1311,8 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     /* 打字模式token(同上须注入): 待打灰底/已打亮色/完成淡出/错误红闪 */
     .twTok{border-radius:3px;}
     .twTok .twA,.twTok .twB{background:rgba(128,128,128,.22);border-radius:2px;padding:0 1px;}
+    ruby.twTok{ruby-position:over;}
+    ruby.twTok>rt{font-size:.55em;opacity:.7;user-select:none;}
     .twTok.twCur .twA{color:${fg};font-weight:600;}
     .twTok.twCur .twB{color:${muted};}
     .twTok.twGot{opacity:.32;}
@@ -1338,7 +1340,10 @@ const escTxt = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"
 const TXT_SPLIT_LINES = 2000;
 const TXT_LN_CSS = `.lnmode{white-space:normal;} .ln{min-height:1em;white-space:pre-wrap;}`;
 function txtLinesHtml(lines) {
-  if (lines.length <= TXT_SPLIT_LINES) return `<div class="content">${escTxt(lines.join("\n"))}</div>`;
+  if (lines.length <= TXT_SPLIT_LINES) {
+    const ps = lines.map(l => l ? `<p>${escTxt(l)}</p>` : "").join("");
+    return `<div class="content">${ps}</div>`;
+  }
   return `<div class="content lnmode">` + lines.map(l => `<div class="ln">${escTxt(l)}</div>`).join("") + `</div>`;
 }
 function renderTxtChapter(ch) {
@@ -1347,7 +1352,7 @@ function renderTxtChapter(ch) {
   return buildChapterDoc({
     bg, fg,
     bodyHtml: `${titleHtml}${txtLinesHtml(ch.lines)}`,
-    extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:0 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;} ${TXT_LN_CSS}`
+    extraCss: `h2{font-size:1.35em;font-weight:700;text-align:center;margin:0 0 1.5em;line-height:1.4;} .content{white-space:pre-wrap;} .content p{margin:0;white-space:pre-wrap;} ${TXT_LN_CSS}`
   });
 }
 
@@ -2422,33 +2427,41 @@ function setScratch(on) {
 }
 $("scratchBtn").onclick = () => setScratch(!state.scratch);
 /* 输入条喂字: 兼容直接字母与中文IME拼音组合(组合中逐字符实时喂, 提交后清空缓冲) */
-bindEl("typingInput", el => el.addEventListener("input", e => {
-  const inp = e.target;
-  const v = inp.value;
-  /* 真打字模式: 只消费已上屏文本(组合中的原始拼音会误配); 提交后清空缓冲 */
-  if (state.twReal) {
-    if (!e.isComposing && twState?.phase !== "pick") {
-      const chunk = v.slice(twProcIdx).replace(/\s+/g, "");
-      if (chunk) twFeedChunk(chunk);
+let twComposing = false;
+bindEl("typingInput", el => {
+  /* 真打字: 组合期内(原始拼音/quicker)一律不喂, 避免敲键盘过程误读报错音; 提交后按全字校对 */
+  el.addEventListener("compositionstart", () => { twComposing = true; });
+  el.addEventListener("compositionend", () => { twComposing = false; });
+  el.addEventListener("input", e => {
+    const inp = e.target;
+    const v = inp.value;
+    /* 真打字模式: 只消费已上屏文本(组合中的原始拼音会误配); 提交后清空缓冲 */
+    if (state.twReal) {
+      if (!e.isComposing && !twComposing && twState?.phase !== "pick") {
+        const chunk = v.slice(twProcIdx).replace(/\s+/g, "");
+        if (chunk) twFeedChunk(chunk);
+      }
+      if (!e.isComposing && !twComposing) { inp.value = ""; twProcIdx = 0; }
+      return;
+    }
+    /* 注音拼音对照模式不进window兜底keydown; 组合中逐字符实时喂(拼音模式下可实时比对) */
+    if (e.isComposing || twComposing) { el.value = v.replace(/\s/g, ""); twProcIdx = 0; return; }
+    twProcIdx = Math.min(twProcIdx, v.length);
+    while (twProcIdx < v.length) {
+      const ch = v[twProcIdx].toLowerCase();
+      if (/[a-z]/.test(ch)) {
+        if (twState?.phase === "pick") twPickNudge();   /* 未点选段落: 提醒而非静默 */
+        else twFeed(ch);
+      }
+      twProcIdx++;
     }
     if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
-    return;
-  }
-  twProcIdx = Math.min(twProcIdx, v.length);
-  while (twProcIdx < v.length) {
-    const ch = v[twProcIdx].toLowerCase();
-    if (/[a-z]/.test(ch)) {
-      if (twState?.phase === "pick") twPickNudge();   /* 未点选段落: 提醒而非静默 */
-      else twFeed(ch);
-    }
-    twProcIdx++;
-  }
-  if (!e.isComposing) { inp.value = ""; twProcIdx = 0; }
-  }));
+  });
+});
 $("typingInput").addEventListener("keydown", e => {
   /* 输入条内Enter/Tab/Esc统一处理, 防止落入表单默认行为 */
   if (e.key === "Escape") { setTyping(false); e.preventDefault(); }
-  else if (e.key === "Tab") { twSkip(); e.preventDefault(); }
+  else if (e.key === "Tab" && !twComposing) { if (state.twReal) twSkipReal(); else twSkip(); e.preventDefault(); }
   else if (e.key === "Enter") e.preventDefault();
 });
 /* 打字期间输入条失焦(点击页面其他处)自动回焦: 保证持续可输入; Esc退出后不再抢焦 */

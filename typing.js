@@ -60,6 +60,15 @@ function twPinyin(ch) {
   try { return window.pinyinPro.pinyin(ch, { toneType: "none", type: "array" })[0] || ""; }
   catch { return ""; }
 }
+/* 声调元音→无调: 外挂注音的<rt>是pinyin-pro默认symbol(带声调nǐ), 打字比对需剥成ni */
+const TW_TONE_MAP = { "ā": "a", "á": "a", "ǎ": "a", "à": "a", "ē": "e", "é": "e", "ě": "e", "è": "e",
+  "ī": "i", "í": "i", "ǐ": "i", "ì": "i", "ō": "o", "ó": "o", "ǒ": "o", "ò": "o",
+  "ū": "u", "ú": "u", "ǔ": "u", "ù": "u", "ǖ": "ü", "ǘ": "ü", "ǚ": "ü", "ǜ": "ü", "ü": "ü" };
+function twToneLess(s) {
+  let out = "";
+  for (const c of s) out += TW_TONE_MAP[c] || c;
+  return out;
+}
 
 /* 把一个文本节点按字符类别切成token; 返回新节点数组(替换原节点用) */
 function twEmitText(doc, node, jaCtx, out) {
@@ -102,17 +111,27 @@ function twEmitText(doc, node, jaCtx, out) {
 }
 const TW_LATIN_RE = /[a-zA-Z]/;
 
-function twMkToken(doc, text, expect, realExpect) {
+function twMkToken(doc, text, expect, realExpect, rtText) {
   /* 双层结构: twA=已打亮的源字符前缀, twB=待打(灰色); 单字中文源不可拆, 靠caret+整体变色指示
-     realExpect=真打字模式的期望字面(源文本本身), expect=拼音模式期望(读音字母) */
-  const el = doc.createElement("span");
+     realExpect=真打字模式的期望字面(源文本本身), expect=拼音模式期望(读音字母)
+     rtText=外挂注音原文(带声调): 当前行打字时把注音内嵌回token(ruby.twTok), 避免注音丢失 */
+  const hasRuby = !!rtText;
+  const el = doc.createElement(hasRuby ? "ruby" : "span");
   el.className = "twTok";
   const a = doc.createElement("span");
   a.className = "twA";
   const b = doc.createElement("span");
   b.className = "twB";
   b.textContent = text;
-  el.append(a, b);
+  if (hasRuby) {
+    const rb = doc.createElement("rb");
+    rb.append(a, b);
+    const rt = doc.createElement("rt");
+    rt.textContent = rtText;
+    el.append(rb, rt);
+  } else {
+    el.append(a, b);
+  }
   return { el, aEl: a, bEl: b, expect: expect || "", got: 0, src: text, realExpect: realExpect || text };
 }
 /* 闪烁光标: 指示当前输入位置 */
@@ -139,9 +158,12 @@ function twEmitRuby(doc, ruby, jaCtx, out) {
   const rtText = (rt?.textContent || "").trim();
   let expect = "";
   if (rtText && TW_KANA.test(rtText)) expect = toRomaji(rtText);
-  else if (rtText && TW_TONELESS.test(rtText)) expect = rtText.toLowerCase().replace(/\s+/g, "");
+  else if (rtText && TW_TONELESS.test(rtText)) expect = twToneLess(rtText).toLowerCase().replace(/\s+/g, "");
   else if (!jaCtx && TW_HAN.test(base)) expect = [...base].map(twPinyin).join("");
-  const tok = twMkToken(doc, base, expect, base);
+  /* 只对外挂注音(ruby.py)内嵌rt到token: twWrapBlock会破坏性替换ruby, 外挂注音需还原视觉;
+     书籍原生ruby的注音以原样渲染保留, 不重复内嵌 */
+  const embedRt = ruby.classList.contains("py") ? rtText : "";
+  const tok = twMkToken(doc, base, expect, base, embedRt);
   out.push(tok);
   const wrap = doc.createDocumentFragment();
   wrap.appendChild(tok.el);

@@ -537,6 +537,48 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6b-4b. 打字 + 外挂注音并存: 当前行还原注音视觉 + 提示无声调 ---- */
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="pinyin"]').click()`);
+  await sleep(300);
+  await evalJs(`openBookFile(window.__makeEpubFile(window.__twZip, "tw3.epub"))`);
+  await sleep(1500);
+  /* 确认外挂注音已生成带声调ruby.py */
+  const ap0 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const r = d.querySelector("ruby.py rt");
+    return { n: d.querySelectorAll("ruby.py").length, rt: r?.textContent || "" };
+  })()`);
+  ok(ap0.n > 0, `外挂注音已铺开(${ap0.n}个ruby.py)`);
+  await evalJs(`document.getElementById("typingBtn").click()`);
+  await sleep(1200);
+  /* 点选含汉字"你好世界"的段(外挂注音使其textContent为"你nǐ好hǎo世shì界jiè。") */
+  const apClick = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const p = [...d.querySelectorAll("p")].find(p => p.querySelectorAll("ruby.py").length >= 4);
+    if (!p) return { status: "notfound", paras: [...d.querySelectorAll("p")].map(p => p.textContent) };
+    p.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { status: "clicked", text: p.textContent };
+  })()`);
+  await sleep(400);
+  if (apClick.status !== "clicked") throw new Error("打字+注音 段点击失败: " + JSON.stringify(apClick));
+  const ap1 = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const cur = d.querySelector(".twTok.twCur");
+    /* 当前行token应为ruby.twTok且内嵌rt注音(修复Bug1) */
+    const embeddedRt = cur && cur.tagName.toLowerCase() === "ruby" && !!cur.querySelector("rt");
+    /* expect应无声调(ni/nǐ均剥为ni): twState当前token expect不含āáǎàēéěè… */
+    const expect = twState?.tokens[twState.idx]?.expect || "";
+    return { embeddedRt, expect, hasTone: /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(expect) };
+  })()`);
+  ok(ap1.embeddedRt, "外挂注音开启时当前打字行token内嵌rt注音(不丢失)");
+  ok(ap1.expect.length > 0 && !ap1.hasTone, `提示为无声调拼音(expect=${ap1.expect}, 无音调${ap1.hasTone})`);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`document.querySelector('#annotateSeg [data-ann="off"]').click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6b-5. 马克笔高亮: 划选标记/持久化回贴/删除/导图子节点联动 ---- */
   await evalJs(`openBookFile(window.__makeEpubFile(window.__twZip, "tw2.epub"))`);
   await sleep(900);
