@@ -256,6 +256,9 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`[...document.querySelectorAll(".setTab")].find(b => b.dataset.tab === "appearance").click()`);
   await sleep(50);
   ok(await evalJs(`!document.querySelector('.setPage[data-page="appearance"]').hidden && document.querySelector('.setPage[data-page="backup"]').hidden`), "切回外观分页");
+  await evalJs(`[...document.querySelectorAll(".setTab")].find(b => b.dataset.tab === "layout").click()`);
+  await sleep(50);
+  ok(await evalJs(`!document.querySelector('.setPage[data-page="layout"]').hidden && document.querySelector('.setPage[data-page="appearance"]').hidden && !!document.getElementById("fontSizeRange")`), "排版分页切换成功且含字号控件");
   await evalJs(`[...document.querySelectorAll(".langChip")].find(b=>b.dataset.lang==="zh").click()`);
 
   /* ---- 4. toast 动作扩展 ---- */
