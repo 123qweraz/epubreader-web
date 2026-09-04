@@ -2762,7 +2762,7 @@ window.addEventListener("dragover", dragHover);
 window.addEventListener("dragleave", dragLeave);
 window.addEventListener("drop", dropFile);
 
-window.addEventListener("pagehide", saveProgress);
+window.addEventListener("pagehide", flushProgress);
 
 /* 视口尺寸变化同步(排版引擎在 pager.js) */
 let pagedResizeTimer = 0;
