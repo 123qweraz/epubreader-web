@@ -164,6 +164,15 @@
         </div>
       </div>
       <div class="settingHint" data-i18n="twModeHint">拼音对照：关闭输入法按拼音字母逐键对比；输入法真打：正常用输入法打字上屏，按上屏汉字与原文比对，英文直接照打。</div>
+      <div class="settingRow">
+        <span class="settingLabel" data-i18n="scrRatioLabel">抹黑比例</span>
+        <input id="scrRatioRange" type="range" min="0" max="100" step="5" aria-label="抹黑比例" data-i18n-aria="scrRatioAria">
+        <button id="scrRatioMinus" class="stepBtn" title="减小刮乐涂层比例" data-i18n-title="scrRatioMinusTip">−</button>
+        <button id="scrRatioPlus" class="stepBtn" title="增大刮乐涂层比例" data-i18n-title="scrRatioPlusTip">＋</button>
+        <input id="scrRatioNum" class="settingNum" type="number" min="0" max="100" step="5" aria-label="抹黑比例数值" data-i18n-aria="scrRatioNumAria">
+        <span class="settingUnit">%</span>
+      </div>
+      <div class="settingHint" data-i18n="scrRatioHint">逐字阅读(刮刮乐)模式下被涂层隐藏的文字比例：0 = 无涂层(关闭)，100 = 全部涂层；默认 50。</div>
       </div>
     <div class="setCard">
     <div class="setCardTitle" data-i18n="secAutoRead">自动阅读</div>

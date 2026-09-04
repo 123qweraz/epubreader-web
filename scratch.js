@@ -1,10 +1,12 @@
 /* scratch.js — 逐字阅读(刮刮乐)模式: 正文如刮刮乐涂层隐藏为小格, 鼠标划过逐个字显现
    涂覆为视图懒加载: IntersectionObserver 观测书块, 进入视野才包裹span → 超大章节/整书模式可用
    依赖运行期全局(函数体内调用, 与加载序无关): state/t/toast/readerColors/$(reader.js)
-   reader.js 契约: scratchEnter(doc) 开启/章节加载后重进; scratchReset() 退出恢复 */
+   reader.js 契约: scratchEnter(doc) 开启/章节加载后重进; scratchReset() 退出恢复
+   抹黑比例: state.scratchRatio (0-100), 0=不涂, 100=全涂, 默认50 */
 
 const SCR_BLOCK_SEL = "p,li,dd,dt,blockquote,h1,h2,h3,h4,h5,h6";
 let scrDoc = null;          /* 当前激活文档 */
+let _scrSeed = 0;           /* 涂层比例确定性散布种子 */
 
 /* 涂层色: 由主题 bg/fg 中和派生, 深色主题自动变亮银(刮刮乐质感) */
 function scrCoating() {
@@ -43,9 +45,11 @@ function scrCollectBlocks(doc) {
   });
 }
 
-/* 单个文本节点: 非空白逐字符包span, 空白保持原文(保布局/保pre-wrap换行语义) */
+/* 单个文本节点: 非空白逐字符包span, 空白保持原文(保布局/保pre-wrap换行语义)
+   按抹黑比例 state.scratchRatio 决定每字是否涂层: 确定性散布保证整段近似达到目标比例 */
 function scrWrapText(doc, node, frag) {
   const text = node.nodeValue || "";
+  const ratio = Math.min(100, Math.max(0, Number(state.scratchRatio) || 0)) / 100;
   let plain = "";
   const flush = () => { if (plain) { frag.appendChild(doc.createTextNode(plain)); plain = ""; } };
   for (let i = 0; i < text.length;) {
@@ -54,11 +58,17 @@ function scrWrapText(doc, node, frag) {
     const len = cp > 0xffff ? 2 : 1;
     if (/\s/u.test(ch)) plain += ch;
     else {
-      flush();
-      const s = doc.createElement("span");
-      s.className = "scr";
-      s.textContent = ch;
-      frag.appendChild(s);
+      /* 确定性伪随机散布: 用简单哈希命中与否, 双样本负相关避免明显聚集 */
+      _scrSeed = (_scrSeed * 9301 + 49297) % 233280;
+      const r = _scrSeed / 233280;
+      const coated = ratio >= 1 ? true : (ratio <= 0 ? false : r < ratio);
+      if (coated) {
+        flush();
+        const s = doc.createElement("span");
+        s.className = "scr";
+        s.textContent = ch;
+        frag.appendChild(s);
+      } else plain += ch;
     }
     i += len;
   }

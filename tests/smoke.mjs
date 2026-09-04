@@ -754,6 +754,50 @@ window.__rawEpub = (title, o = {}) => {
   })()`);
   ok(sc0.btnActive && sc0.typingOff && sc0.n > 0, `逐字模式开启涂覆(${sc0.n}字已涂)`);
   ok(sc0.transparent && sc0.coated && sc0.hasStyle, "涂层字透明+灰底(刮刮乐小格)");
+  /* 抹黑比例: 默认50% → 涂层字约占一半 */
+  const scR = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    /* 跨全部块聚合: 每块 coated 字符数 / 可见字符数 */
+    let tot = 0, coated = 0;
+    for (const b of d.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6")) {
+      if (b.closest(".scr, rt, rp, script, style")) continue;
+      const t = (b.textContent || "").trim().replace(/\s+/g, "").length;
+      const c = b.querySelectorAll(".scr").length;
+      tot += t; coated += c;
+    }
+    return { frac: tot ? Math.round((coated / tot) * 100) : 0, ratio: state.scratchRatio, total: tot };
+  })()`);
+  ok(Math.abs(scR.frac - scR.ratio) <= 15, `默认抹黑比例≈${scR.ratio}%(实测${scR.frac}%, 共${scR.total}字)`);
+  /* 调0% → 无涂层(等同关闭); 走真实滑条input路径触发重涂 */
+  await evalJs(`(() => {
+    const r = document.getElementById("scrRatioRange");
+    r.value = "0"; r.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  await sleep(500);
+  const sc0r = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    return { n: d.querySelectorAll(".scr").length, ratio: state.scratchRatio, ls: localStorage.getItem("scratchRatio") };
+  })()`);
+  ok(sc0r.n === 0 && sc0r.ratio === 0 && sc0r.ls === "0", `抹黑比例0%无涂层(涂层${sc0r.n}字, ratio=${sc0r.ratio})`);
+  /* 调100% → 全涂 */
+  await evalJs(`(() => {
+    const r = document.getElementById("scrRatioRange");
+    r.value = "100"; r.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  await sleep(500);
+  const sc100r = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const scrN = d.querySelectorAll(".scr").length;
+    const b = d.querySelector("p");
+    return { scr: scrN, tot: (b?.textContent || "").length };
+  })()`);
+  ok(sc100r.scr > 0 && sc100r.scr >= sc100r.tot * 0.9, `抹黑比例100%全涂(涂${sc100r.scr}/${sc100r.tot}字, 全册涂层${sc100r.scr})`);
+  /* 恢复默认50% */
+  await evalJs(`(() => {
+    const r = document.getElementById("scrRatioRange");
+    r.value = "50"; r.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  await sleep(500);
   /* 逐字精确显现: 指到哪字亮哪字, 邻字不动 */
   await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;

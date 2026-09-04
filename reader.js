@@ -98,8 +98,10 @@ const state = {
   annotate: "off",
   /* 打字模式: 会话级, 照书打字驱动阅读(typing.js) */
   typing: false,
-  /* 逐字阅读(刮刮乐)模式: 会话级, 正文涂层隐藏鼠标划过逐字显现(scratch.js) */
+  /* 逐字阅读(刮刮乐)模式: 会话级, 正文涂层隐藏鼠标划过逐字显现(scratch.js);
+     抹黑比例 0-100 持久化偏好, 0=关闭涂层 100=全部涂层, 默认50 */
   scratch: false,
+  scratchRatio: Math.min(100, Math.max(0, Number(localStorage.getItem("scratchRatio") ?? 50))),
   /* 马克笔高亮: 会话级开关 + 记忆的颜色(划词标记, 导图联动); once=单击进入的单次模式 */
   marker: false,
   markerOnce: false,
@@ -308,7 +310,7 @@ async function registerBook(file, title, chapters) {
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
    导出的书目为"待关联"记录, 导入后重新打开同名同大小文件即自动回填并续读 */
-const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","autoSpeedMult","autoScrollSpeed","autoPageInterval","contentMax","contentLimited","typingSound","twReal"];
+const BACKUP_PREF_KEYS = ["lang","theme","customThemes","customSlot","fontSize","lineHeight","fontFamily","bookFontFirst","readMode","vertical","shelfView","settingsPinned","sidebarPinned","autoSpeed","autoSpeedMult","autoScrollSpeed","autoPageInterval","contentMax","contentLimited","typingSound","twReal","scratchRatio"];
 async function exportBackup() {
   flushProgress();
   const prefs = {};
@@ -394,6 +396,7 @@ function restorePrefsFromStorage() {
   state.settingsPinned = localStorage.getItem("settingsPinned") === "1";
   state.typingSound = localStorage.getItem("typingSound") !== "0";
   state.twReal = localStorage.getItem("twReal") === "1";
+  state.scratchRatio = (() => { const v = Number(localStorage.getItem("scratchRatio")); return Number.isFinite(v) ? Math.min(100, Math.max(0, Math.round(v))) : 50; })();
   syncPin("pinSettings", state.settingsPinned, "settingsPanel");
   state.readMode = localStorage.getItem("readMode") === "paged" ? "paged" : "scroll";
   state.shelfView = localStorage.getItem("shelfView") === "list" ? "list" : "grid";
@@ -417,6 +420,7 @@ if (localStorage.getItem("pinyinWarmed") === "1") ensurePinyinLib().catch(() => 
   syncFontSize();
   syncLineHeight();
   syncContentMax();
+  syncScrRatio();
   syncCustomPickers();
   syncPin("pinSettings", state.settingsPinned, "settingsPanel");
   applySide();
@@ -2674,6 +2678,12 @@ const syncContentMax = bindSetting("contentMaxRange", "contentMaxNum", {
     applySide();
   }
 });
+const syncScrRatio = bindSetting("scrRatioRange", "scrRatioNum", {
+  key: "scratchRatio", min: 0, max: 100,
+  onInput: () => { localStorage.setItem("scratchRatio", String(state.scratchRatio)); if (state.scratch) forceRebuildReader(); }
+});
+$("scrRatioMinus").onclick = () => syncScrRatio.step(-5);
+$("scrRatioPlus").onclick = () => syncScrRatio.step(5);
 $("fsMinus").onclick = () => syncFontSize.step(-1);
 $("fsPlus").onclick = () => syncFontSize.step(1);
 $("lhMinus").onclick = () => syncLineHeight.step(-0.05);
