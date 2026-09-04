@@ -291,10 +291,13 @@ window.__rawEpub = (title, o = {}) => {
   const shelfCount = await evalJs(`document.querySelectorAll("#shelfList .shelfItem").length`);
   ok(shelfCount === 1, "书架出现1条记录");
   const coverChk = await evalJs(`
-(async () => ({
-  img: !!document.querySelector("#shelfList .cardCoverImg") && document.querySelector("#shelfList .cardCoverImg").src.startsWith("blob:"),
-  stored: (await idbAll("meta"))[0].cover instanceof Blob
-}))()
+(async () => {
+  const m = (await idbAll("meta"))[0];
+  return {
+    img: !!document.querySelector("#shelfList .cardCoverImg") && document.querySelector("#shelfList .cardCoverImg").src.startsWith("blob:"),
+    stored: !!m && typeof m.cover?.arrayBuffer === "function"
+  };
+})()
 `);
   ok(coverChk.img && coverChk.stored, "EPUB封面经cover-image提取, 卡片显示且Blob已入meta库");
 

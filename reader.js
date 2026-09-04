@@ -652,7 +652,7 @@ async function renderShelf() {
       cover.className = "cardCover";
       cover.style.setProperty("--ch", String(hue));
       cover.setAttribute("aria-hidden", "true");
-      if (m.cover instanceof Blob) {
+      if (m.cover && typeof m.cover.arrayBuffer === "function") {
         const u = URL.createObjectURL(m.cover);
         shelfCoverUrls.push(u);
         const img = document.createElement("img");
