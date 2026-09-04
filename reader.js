@@ -1045,14 +1045,14 @@ function materializeResource(el) {
   const rpath = el.getAttribute("data-rpath");
   if (!rpath) return Promise.resolve();
   return makeResourceUrl(rpath)
-    .then(u => { if (el.isConnected) el.setAttribute(attr, u); })
-    .catch(() => {})
-    .then(() => {
+    .then(u => {
+      if (el.isConnected) el.setAttribute(attr, u);
       if (el.getAttribute("data-rpath") === rpath) {
         el.removeAttribute("data-rpath");
         el.removeAttribute("data-rattr");
       }
-    });
+    })
+    .catch(() => {});
 }
 
 function installLazyResources(win, doc) {
