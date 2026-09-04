@@ -305,7 +305,10 @@ async function registerBook(file, title, chapters) {
       cover: state.book?.coverBlob instanceof Blob ? state.book.coverBlob : null
     });
     await pruneShelf();   /* 超出上限按最旧清理, 防止IndexedDB无限累积占满配额 */
-  } catch {}
+  } catch (err) {
+    console.warn("registerBook failed", err);
+    toast(t("shelfSaveFail"));
+  }
 }
 
 /* ---------- 数据备份: 设置偏好+阅读进度+书目元数据(不含书籍文件本体) ----------
