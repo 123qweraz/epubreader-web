@@ -1308,22 +1308,21 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     /* 马克笔高亮(样式必须注入章节文档, 父页reader.css不作用于iframe) */
     mark.mkHl{background:var(--hlc,#ffe066);color:inherit;border-radius:2px;padding:0 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone;}
     .mkMode,.mkMode *{cursor:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M3 21l2-6L16 4l4 4L9 19z" fill="%23ffe066" stroke="%23333" stroke-width="1.4"/></svg>') 4 20, text !important;}
-    /* 打字模式token(同上须注入): 待打灰底/已打亮色/完成淡出/错误红闪 */
-    .twTok{border-radius:3px;}
-    .twTok .twA,.twTok .twB{background:rgba(128,128,128,.22);border-radius:2px;padding:0 1px;}
-    ruby.twTok{ruby-position:over;}
-    ruby.twTok>rt{font-size:.55em;opacity:.7;user-select:none;}
+    /* 打字模式token(同上须注入): 待打文本下划线强调, 不加灰底不压暗, 尽量不干扰阅读 */
+    .twTok .twB{border-bottom:2px solid ${accent};}
+    .twTok .twA{font-weight:600;}
+    ruby.twTok{display:inline-flex;flex-direction:column;align-items:center;vertical-align:baseline;}
+    ruby.twTok>rt{font-size:.55em;opacity:.7;user-select:none;overflow:hidden;white-space:nowrap;}
     .twTok.twCur .twA{color:${fg};font-weight:600;}
-    .twTok.twCur .twB{color:${muted};}
-    .twTok.twGot{opacity:.32;}
-    .twTok.twGot .twA,.twTok.twGot .twB{background:transparent;}
+    .twTok.twCur .twB{border-bottom:2px solid ${accent};}
+    .twTok.twGot .twA,.twTok.twGot .twB{border-bottom:none;}
     .twTok.twErr{background:#b3402f !important;color:#fff !important;animation:twShake .2s ease;}
     .twTok.twErr .twA,.twTok.twErr .twB{color:#fff;}
     @keyframes twShake{0%,100%{transform:none}50%{transform:translateX(2px)}}
     .twCaret{display:inline-block;width:2px;height:1.05em;vertical-align:-.15em;margin-left:1px;background:${accent};animation:twBlink 1.1s steps(1) infinite;}
     @keyframes twBlink{50%{opacity:0}}
     @media (prefers-reduced-motion:reduce){.twTok.twErr,.twCaret{animation:none}}
-    .twGrayBlock{opacity:.38;filter:grayscale(.55);transition:opacity .3s ease,filter .3s ease;}
+    .twGrayBlock{cursor:default;}
     /* 纯拼音替换文本 */
     .pyRep{opacity:.92;}
     html{scroll-behavior:smooth;overscroll-behavior:contain;}

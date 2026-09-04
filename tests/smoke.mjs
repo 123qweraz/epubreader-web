@@ -564,14 +564,19 @@ window.__rawEpub = (title, o = {}) => {
   const ap1 = await evalJs(`(() => {
     const d = document.getElementById("bookFrame").contentDocument;
     const cur = d.querySelector(".twTok.twCur");
-    /* 当前行token应为ruby.twTok且内嵌rt注音(修复Bug1) */
     const embeddedRt = cur && cur.tagName.toLowerCase() === "ruby" && !!cur.querySelector("rt");
-    /* expect应无声调(ni/nǐ均剥为ni): twState当前token expect不含āáǎàēéěè… */
     const expect = twState?.tokens[twState.idx]?.expect || "";
-    return { embeddedRt, expect, hasTone: /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(expect) };
+    const toks = [...d.querySelectorAll(".twTok")].filter(t => t.getBoundingClientRect().width > 0);
+    let gap23 = 0;
+    if (toks.length >= 3) {
+      const b = toks[1].getBoundingClientRect(), c = toks[2].getBoundingClientRect();
+      gap23 = Math.round((c.left - (b.left + b.width)) * 10) / 10;
+    }
+    return { embeddedRt, expect, hasTone: /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(expect), tokGap23: gap23, nTok: toks.length };
   })()`);
   ok(ap1.embeddedRt, "外挂注音开启时当前打字行token内嵌rt注音(不丢失)");
   ok(ap1.expect.length > 0 && !ap1.hasTone, `提示为无声调拼音(expect=${ap1.expect}, 无音调${ap1.hasTone})`);
+  ok(ap1.tokGap23 <= 1, `打字+注音并存时相邻token无异常间距(${ap1.nTok}tokens, gap=${ap1.tokGap23}px)`);
   await evalJs(`document.getElementById("closeBookBtn").click()`);
   await sleep(300);
   await evalJs(`document.querySelector('#annotateSeg [data-ann="off"]').click()`);

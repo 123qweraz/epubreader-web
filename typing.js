@@ -191,9 +191,7 @@ function twWrapBlock(doc, block, jaCtx) {
 const TW_PICK_CSS = `
   ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}`).join(",")} { cursor: pointer; }
   ${TW_BLOCK_SEL.split(",").map(s => `.twPicking ${s}:hover`).join(",")} { background: rgba(128,128,128,.18); }
-  .twGrayBlock { opacity: .38; filter: grayscale(.55); }
-  .twGrayBlock .twGot { opacity: 1; filter: none; }
-  ${TW_BLOCK_SEL.split(",").join(",")} { transition: opacity .3s ease, filter .3s ease; }
+  .twGrayBlock { cursor: default; }
 `;
 function twFindBlock(doc, target) {
   return twState?.blocks.find(b => b.contains(target)) || null;
@@ -253,7 +251,11 @@ function twApplySpotlight(activeEl) {
   const st = twState;
   if (!st) return;
   /* 用户预期: 选中段落整体变灰(打完的词恢复), 其他文字保持原样 */
-  for (const b of st.allBlocks) b.classList.toggle("twGrayBlock", b === activeEl);
+  for (const b of st.allBlocks) {
+    b.classList.toggle("twGrayBlock", b === activeEl);
+    /* 打字模式下取消justify避免ruby分散间距 */
+    if (b.tagName === "P") b.style.textAlign = b === activeEl ? "start" : "";
+  }
 }
 
 function twLoadBlock(centerFirst) {
