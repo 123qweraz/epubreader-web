@@ -191,8 +191,11 @@ function saveProgress() {
 function bookId(title, size) { return `${title}\u0000${size}`; }
 
 let idbPromise = null;
+let idbFailAt = 0;   /* 上次打开失败时间戳, 失败后短暂退避避免反复重试(浏览器可用性抖动时自愈) */
 function idbOpen() {
   if (!idbPromise) {
+    if (performance.now() - idbFailAt < 2000)
+      return Promise.reject(new Error(t("shelfUnavailable")));
     idbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open("epubreader-db", 1);
       req.onupgradeneeded = () => {
@@ -201,7 +204,7 @@ function idbOpen() {
         if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "id" });
       };
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => { idbFailAt = performance.now(); reject(req.error); };
     });
     idbPromise.catch(() => { idbPromise = null; });
   }
