@@ -1311,8 +1311,8 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     /* 打字模式token(同上须注入): 待打文本下划线强调, 不加灰底不压暗, 尽量不干扰阅读 */
     .twTok .twB{border-bottom:2px solid ${accent};}
     .twTok .twA{font-weight:600;}
-    ruby.twTok{display:inline-flex;flex-direction:column;align-items:center;vertical-align:baseline;}
-    ruby.twTok>rt{font-size:.55em;opacity:.7;user-select:none;overflow:hidden;white-space:nowrap;}
+    ruby.twTok{ruby-position:over;}
+    ruby.twTok>rt{font-size:.55em;opacity:.7;user-select:none;}
     .twTok.twCur .twA{color:${fg};font-weight:600;}
     .twTok.twCur .twB{border-bottom:2px solid ${accent};}
     .twTok.twGot .twA,.twTok.twGot .twB{border-bottom:none;}

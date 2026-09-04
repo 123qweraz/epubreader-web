@@ -242,11 +242,7 @@ function twApplySpotlight(activeEl) {
   const st = twState;
   if (!st) return;
   /* 用户预期: 选中段落整体变灰(打完的词恢复), 其他文字保持原样 */
-  for (const b of st.allBlocks) {
-    b.classList.toggle("twGrayBlock", b === activeEl);
-    /* 打字模式下取消justify避免ruby分散间距 */
-    if (b.tagName === "P") b.style.textAlign = b === activeEl ? "start" : "";
-  }
+  for (const b of st.allBlocks) b.classList.toggle("twGrayBlock", b === activeEl);
 }
 
 function twLoadBlock(centerFirst) {
