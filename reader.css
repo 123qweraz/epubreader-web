@@ -26,7 +26,6 @@ button:active:not(:disabled) { transform: scale(.96); }
 .title { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
 .toolbarRight { display: flex; gap: 4px; align-items: center; }
 .speedCtl { display: flex; align-items: center; gap: 2px; }
-.speedCtl[hidden] { display: none; }
 .speedBtn { padding: 2px 7px; font-size: 11px; color: var(--muted); background: transparent; border-radius: var(--r-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .speedBtn:hover { background: var(--button); color: var(--fg); }
 .speedBtn.active { background: var(--accent); color: var(--bg); }
