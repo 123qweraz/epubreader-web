@@ -168,7 +168,7 @@ body.green { --bg: #cde5cd; --fg: #26332b; --muted: #77736c; --bar: rgba(205,229
 #typingBar .tbStat { font-size: var(--fs-xs); color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #typingBar .tbStat:empty { display: none; }
 #typingInput { width: 13em; border: none; background: transparent; color: var(--fg); outline: none; font-size: var(--fs-sm); caret-color: var(--accent); }
-/* 注意: mark.mkHl/.twTok/.twCaret/.pyRep 等正文内标记样式在 buildChapterDoc 注入章节文档(iframe不继承父页样式) */
+/* 注意: mark.mkHl/.twTok/.pyRep 等正文内标记样式在 buildChapterDoc 注入章节文档(iframe不继承父页样式) */
 /* 马克笔色板(父页UI) */
 #markerPalette { position: fixed; top: 54px; left: 14px; z-index: 70; display: flex; gap: 8px; align-items: center; background: var(--bar); border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; box-shadow: var(--shadow-2); }
 #markerPalette[hidden] { display: none; }

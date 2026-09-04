@@ -43,11 +43,11 @@ pager.js     309 行   排版引擎: 翻页(CSS columns)+滚动双模式/虚拟�
 reader.js   2177 行起 UI 编排与渲染管线(state 单点/存储/书架/搜索/渲染/主题/设置绑定)
 i18n.js      172 行   翻译表
 pinyin.js    166 行   外挂注音调度引擎(独立于核心, 三触点: pyDispatch/pyMarkMove/pyReset)
-typing.js    438 行   打字模式调度引擎(独立于核心, 触点: twEnterPick/twReset)
+typing.js    426 行   打字模式调度引擎(独立于核心, 触点: twEnterPick/twReset)
 scratch.js   128 行   逐字阅读(刮刮乐)调度引擎(独立于核心, 触点: scratchEnter/scratchReset)
 sw.js         80 行   预缓存 SHELL 清单 + 缓存策略
 vendor/             pinyin-pro.min.js
-tests/smoke.mjs 1176 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 129 项断言)
+tests/smoke.mjs 1207 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 132 项断言)
 ```
 
 ### 脚本链与依赖契约
@@ -118,7 +118,7 @@ tests/smoke.mjs 1176 行   零依赖冒烟测试(内置静态服务器驱动真 
 4. **潜在隐患备忘**：materializeResource 在 makeResourceUrl 失败时仍无条件摘除 data-rpath
    （.catch 吞错后清理照跑）——属健壮性缺口，下次动媒体管线时顺手加固
 5. **回归测试资产**：`tests/smoke.mjs` 已入库（零依赖, `node tests/smoke.mjs` 直接运行,
-   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 129 项断言覆盖开书/分章/书架/编辑模式/
+   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 132 项断言覆盖开书/分章/书架/编辑模式/
    备份往返/重链接/双视图/封面提取/注音会话级/i18n/a11y/打字模式/逐字阅读/野生书容错）。
    凡改解析/排版/书架或新增交互模式, 先跑冒烟再提交
 6. **经典脚本方法重名陷阱**：类里新增方法不可与既有同名（哪怕签名不同）——后者静默覆盖

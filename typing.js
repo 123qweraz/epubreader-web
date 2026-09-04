@@ -134,15 +134,6 @@ function twMkToken(doc, text, expect, realExpect, rtText) {
   }
   return { el, aEl: a, bEl: b, expect: expect || "", got: 0, src: text, realExpect: realExpect || text };
 }
-/* 闪烁光标: 指示当前输入位置 */
-let twCaret = null;
-function twPlaceCaret(tok) {
-  const doc = tok.el.ownerDocument;
-  if (twCaret?.isConnected) twCaret.remove();
-  twCaret = doc.createElement("span");
-  twCaret.className = "twCaret";
-  tok.el.after(twCaret);
-}
 /* 键入进度渲染: 源字符按got数拆分到twA(已亮)/twB(待打灰) */
 function twPaintProgress(tok) {
   tok.aEl.textContent = tok.src.slice(0, tok.got);
@@ -278,7 +269,6 @@ function twLoadBlock(centerFirst) {
       for (const t of usable) { t.start = st.stream.length; st.stream += t.realExpect; t.end = st.stream.length; }
       twApplySpotlight(b);
       usable[0].el.classList.add("twCur");
-      twPlaceCaret(usable[0]);
       twUpdateHint();
       if (centerFirst) b.scrollIntoView({ behavior: REDUCED_MOTION ? "instant" : "smooth", block: "center" });
       else twAnchor(usable[0]);
@@ -295,7 +285,7 @@ function twAdvance() {
   st.idx++;
   twUpdateBar();
   const nx = st.tokens[st.idx];
-  if (nx) { nx.el.classList.add("twCur"); twPlaceCaret(nx); twAnchor(nx); }
+  if (nx) { nx.el.classList.add("twCur"); twAnchor(nx); }
   else twLoadBlock();
 }
 function twFeed(key) {
@@ -303,7 +293,7 @@ function twFeed(key) {
   if (!st || !st.tokens.length) return;
   const t = st.tokens[st.idx];
   if (!t) return;
-  if (key === t.expect[t.got]) {
+  if (key === t.expect[t.got] || (t.expect[t.got] === "ü" && key === "v")) {
     t.got++;
     twPaintProgress(t);
     twPlayType();
@@ -370,8 +360,6 @@ function twRepaintStream() {
     }
     t.el.classList.toggle("twCur", st.pos >= t.start && st.pos < t.end);
   }
-  const cur = twCurTokenByPos();
-  if (cur && (!twCaret?.isConnected || twCaret.previousSibling !== cur.el)) twPlaceCaret(cur);
 }
 function twFeedChunk(chunk) {
   const st = twState;
@@ -421,7 +409,7 @@ function twUpdateHint() {
     el.textContent = hint ? ` ${hint}` : "";
   } else {
     const tok = st.tokens[st.idx];
-    el.textContent = tok ? ` ${tok.expect.slice(tok.got)}` : "";
+    el.textContent = tok ? ` ${tok.expect.slice(tok.got).replace(/ü/g, "v")}` : "";
   }
 }
 

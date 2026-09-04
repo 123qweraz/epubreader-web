@@ -1319,9 +1319,7 @@ function buildChapterDoc({bg, fg, headCss = "", bodyHtml, extraCss = ""}) {
     .twTok.twErr{background:#b3402f !important;color:#fff !important;animation:twShake .2s ease;}
     .twTok.twErr .twA,.twTok.twErr .twB{color:#fff;}
     @keyframes twShake{0%,100%{transform:none}50%{transform:translateX(2px)}}
-    .twCaret{display:inline-block;width:2px;height:1.05em;vertical-align:-.15em;margin-left:1px;background:${accent};animation:twBlink 1.1s steps(1) infinite;}
-    @keyframes twBlink{50%{opacity:0}}
-    @media (prefers-reduced-motion:reduce){.twTok.twErr,.twCaret{animation:none}}
+    @media (prefers-reduced-motion:reduce){.twTok.twErr{animation:none}}
     .twGrayBlock{cursor:default;}
     /* 纯拼音替换文本 */
     .pyRep{opacity:.92;}

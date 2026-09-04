@@ -436,7 +436,7 @@ window.__rawEpub = (title, o = {}) => {
     };
   })()`);
   ok(t0b.spot && t0b.grayActive === 1 && t0b.n === 4 && t0b.cur === "The", `点选段激活(${t0b.n}token, 当前=${t0b.cur}, 灰段${t0b.grayActive}块)`);
-  ok(t0b.barShown && t0b.inputFocused && t0b.caret, `输入条显示且聚焦(光标=${t0b.caret})`);
+  ok(t0b.barShown && t0b.inputFocused && !t0b.caret, `输入条显示且聚焦(无闪烁光标)`);
   /* 英文大小写不敏感键入 + 逐字母点亮 */
   for (const k of ["T", "H"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
   const t1a = await evalJs(`(() => {
@@ -538,6 +538,37 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`document.getElementById("closeBookBtn").click()`);
   await sleep(300);
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "打字测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
+  /* ---- 6b-4c. ü输入: 键盘无ü, 用v代替(nǚ/lǜ均以v键入) ---- */
+  await evalJs(`window.__uZip = window.__assembleZip([
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>ü测试书</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><p>女绿旅。</p></body></html>']
+  ]); "ok"`);
+  await evalJs(`openBookFile(window.__makeEpubFile(window.__uZip, "u.epub"))`);
+  await sleep(900);
+  await evalJs(`document.getElementById("typingBtn").click()`);
+  await sleep(900);
+  await evalJs(`document.getElementById("bookFrame").contentDocument.querySelector("p").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+  await sleep(300);
+  const u0 = await evalJs(`(() => {
+    const t = twState.tokens[twState.idx];
+    return { cur: t ? t.src : "", expect: t ? t.expect : "" };
+  })()`);
+  ok(u0.cur === "女" && u0.expect === "nü", `女拼音expect=${u0.expect}(内部存ü, 键入用v替代)`);
+  for (const k of [..."nv"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  const u1 = await evalJs(`document.getElementById("bookFrame").contentDocument.querySelector(".twTok.twCur")?.textContent`);
+  ok(u1 === "绿", `女以nv键入通过(当前=${u1})`);
+  for (const k of [..."lv"]) await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)} }))`);
+  const u2 = await evalJs(`document.getElementById("bookFrame").contentDocument.querySelector(".twTok.twCur")?.textContent`);
+  ok(u2 === "旅", `绿以lv键入通过(当前=${u2})`);
+  await evalJs(`document.getElementById("bookFrame").contentDocument.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))`);
+  await sleep(400);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "ü测试书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
   /* ---- 6b-4b. 打字 + 外挂注音并存: 当前行还原注音视觉 + 提示无声调 ---- */
