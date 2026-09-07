@@ -721,6 +721,7 @@ function closeBook() {
   if (state.typing) { state.typing = false; twReset(); syncTypingBtn(); $("typingBar").hidden = true; }
   if (state.scratch) { state.scratch = false; scratchReset(); syncScratchBtn(); }
   if (state.marker) { state.marker = false; state.markerOnce = false; syncMarkerUI(); }
+  vocabClear();
   flushProgress();
   state.urls.forEach(u => URL.revokeObjectURL(u));
   state.urls.clear();
@@ -2084,16 +2085,21 @@ function switchSideTab(tab) {
   $("tabToc").classList.toggle("active", tab === "toc");
   $("tabSearch").classList.toggle("active", tab === "search");
   $("tabMindMap").classList.toggle("active", tab === "mindmap");
+  $("tabVocab").classList.toggle("active", tab === "vocab");
   $("toc").hidden = tab !== "toc";
   $("searchPage").hidden = tab !== "search";
   $("mindMapPage").hidden = tab !== "mindmap";
+  $("vocabPage").hidden = tab !== "vocab";
   if (tab === "mindmap") renderMindMap();   /* 视图位置已按书记忆, 切换不重置 */
+  if (tab === "vocab") vocabRender();       /* 懒渲染: 切到生词面板才分析 */
   try { localStorage.setItem("sidebarLastTab", tab); } catch {}
   syncOverlayAria();
 }
 $("tabToc").onclick = () => switchSideTab("toc");
 $("tabSearch").onclick = () => { switchSideTab("search"); $("searchInput").focus(); };
 $("tabMindMap").onclick = () => switchSideTab("mindmap");
+$("tabVocab").onclick = () => switchSideTab("vocab");
+$("vocabRangeSelect").onchange = () => vocabRender();
 $("openWelcome").onclick = () => $("fileInput").click();
 
 /* ---- 侧边栏面板控制: 最大化 / 关闭 ---- */

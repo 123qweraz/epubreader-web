@@ -842,6 +842,88 @@ window.__rawEpub = (title, o = {}) => {
   await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "刮刮书") await purgeBook(m.id); renderShelf(); })()`);
   await sleep(200);
 
+  /* ---- 6d. 生词发现与统计: 二字共现 → 非常用词表即生词, 可点击定位, 范围筛选 ---- */
+  await evalJs(`
+(async () => {
+  const vc1 = "少年凝望远方，绿洲在茫茫沙海之中。绿洲孕育生命之泉。少年踏上旅途，向绿洲而去。探索每一颗星辰，探索生命的意义。我们终将抵达绿洲，因为心中有光。";
+  const vc2 = "田园诗般的田园风光，田园牧歌。彼时田园安静。我们生活在这个世界，世界很大，我们很小。";
+  const f = [
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+    ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>生词测试书</dc:title><dc:identifier id="uid">urn:uuid:vc</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>'],
+    ["OEBPS/nav.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="c1.xhtml">第一章 绿洲</a></li><li><a href="c2.xhtml">第二章 田园</a></li></ol></nav></body></html>'],
+    ["OEBPS/c1.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h1>第一章 绿洲</h1><p>' + vc1 + '</p></body></html>'],
+    ["OEBPS/c2.xhtml", '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c2</title></head><body><h1>第二章 田园</h1><p>' + vc2 + '</p></body></html>']
+  ];
+  await openBookFile(window.__makeEpubFile(window.__assembleZip(f), "生词测试书.epub"));
+  await new Promise(r => setTimeout(r, 800));
+})();
+`);
+  /* 切到生词面板 → 懒渲染出统计卡片 + 生词表 */
+  await evalJs(`document.getElementById("tabVocab").click()`);
+  await sleep(700);
+  const vc = await evalJs(`(() => {
+    const rows = [...document.querySelectorAll(".vocabRow")].map(r => ({
+      w: r.querySelector(".vocabWord").textContent,
+      c: +r.querySelector(".vocabCount").textContent,
+      ch: r.querySelector(".vocabChapter").textContent
+    }));
+    return {
+      active: document.getElementById("tabVocab").classList.contains("active"),
+      pageShown: !document.getElementById("vocabPage").hidden,
+      cards: [...document.querySelectorAll(".vocabCardNum")].map(c => +c.textContent),
+      rows,
+      words: rows.map(r => r.w)
+    };
+  })()`);
+  /* 全书范围(默认): 绿洲4, 生命3, 少年2, 探索2; 田园4; 不在表内的常用词=我们/因为/世界/生活 */
+  ok(vc.active && vc.pageShown, "生词标签激活且面板显示");
+  ok(vc.cards.length === 4 && vc.cards[0] > 0 && vc.cards[3] > 0 && vc.words.length >= 4,
+    `生词统计卡片齐全(汉字${vc.cards[0]}, 生词${vc.cards[3]}, 表${vc.words.length}条)`);
+  ok(vc.rows.find(r => r.w === "绿洲" && r.c === 5) && vc.rows.find(r => r.w === "生命" && r.c === 2),
+    "高频生词按次数排序收录(绿洲×5, 生命×2): " + JSON.stringify(vc.rows));
+  ok(vc.rows.find(r => r.w === "田园" && r.c === 5), "全书范围含第二章生词(田园×5)");
+  ok(!vc.words.includes("我们") && !vc.words.includes("因为") && !vc.words.includes("世界") && !vc.words.includes("生活"),
+    "常用二字词被白名单过滤不出现在生词表");
+  /* 范围筛选: 切到「当前章」(第一章) → c2 独有词「田园」应消失 */
+  await evalJs(`(() => { const s = document.getElementById("vocabRangeSelect"); s.value = "chapter"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await sleep(600);
+  const vcCh = await evalJs(`(() => ({
+    words: [...document.querySelectorAll(".vocabRow .vocabWord")].map(e => e.textContent),
+    status: document.getElementById("vocabStatus").textContent
+  }))()`);
+  ok(vcCh.words.includes("绿洲") && !vcCh.words.includes("田园") && vcCh.words.includes("探索"),
+    "范围切到当前章: 仅本章生词(绿洲在, 田园不在)");
+  /* 切回全书并缓存复用 */
+  await evalJs(`(() => { const s = document.getElementById("vocabRangeSelect"); s.value = "all"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await sleep(600);
+  const vcCached = await evalJs(`(() => {
+    const rows = [...document.querySelectorAll(".vocabRow .vocabWord")].map(e => e.textContent);
+    return { hasTian: rows.includes("田园"), cache: !!state.book.vocabCache && state.book.vocabCache.size > 0 };
+  })()`);
+  ok(vcCached.hasTian && vcCached.cache, "切回全书恢复田园且结果缓存复用");
+  /* 点击生词 → 跳转定位并在正文高亮 <mark> */
+  await evalJs(`(() => {
+    const row = [...document.querySelectorAll(".vocabRow")].find(r => r.querySelector(".vocabWord").textContent === "绿洲");
+    row.click();
+  })()`);
+  await sleep(600);
+  const vcJump = await evalJs(`(() => {
+    const d = document.getElementById("bookFrame").contentDocument;
+    const mk = d.querySelector("mark");
+    return {
+      tocShown: !document.getElementById("toc").hidden,
+      marked: !!mk && mk.textContent === "绿洲",
+      markText: mk ? mk.textContent : "(no mark)",
+      unitLabel: document.getElementById("chapterLabel").textContent
+    };
+  })()`);
+  ok(vcJump.tocShown && vcJump.marked && !!vcJump.unitLabel, `点击生词跳转: 回目录视图并正文高亮(${vcJump.markText})`);
+  await evalJs(`document.getElementById("closeBookBtn").click()`);
+  await sleep(300);
+  await evalJs(`(async () => { for (const m of await idbAll("meta")) if (m.title === "生词测试书") await purgeBook(m.id); renderShelf(); })()`);
+  await sleep(200);
+
   /* ---- 6c. 野生书容错(坏结构不拒开) ---- */
   const openWild = async (buildExpr, title, msg) => {
     await evalJs(`openBookFile(${buildExpr})`);

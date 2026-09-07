@@ -45,14 +45,15 @@ i18n.js      188 行   翻译表
 pinyin.js    166 行   外挂注音调度引擎(独立于核心, 三触点: pyDispatch/pyMarkMove/pyReset)
 typing.js    422 行   打字模式调度引擎(独立于核心, 触点: twEnterPick/twReset)
 scratch.js   137 行   逐字阅读(刮刮乐)调度引擎(独立于核心, 触点: scratchEnter/scratchReset)
-sw.js         80 行   预缓存 SHELL 清单 + 缓存策略
+vocab.js     163 行   生词发现与统计(二字共现词频+常用词白名单; 触点: vocabRender/vocabClear)
+sw.js         84 行   预缓存 SHELL 清单 + 缓存策略
 vendor/             pinyin-pro.min.js
-tests/smoke.mjs 1257 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 136 项断言)
+tests/smoke.mjs 1342 行   零依赖冒烟测试(内置静态服务器驱动真 Chrome, 144 项断言)
 ```
 
 ### 脚本链与依赖契约
 
-`i18n.js → pinyin.js → typing.js → scratch.js → engine.js → pager.js → mindmap.js → reader.js`(经典脚本全局共享):
+`i18n.js → pinyin.js → typing.js → scratch.js → vocab.js → engine.js → pager.js → mindmap.js → reader.js`(经典脚本全局共享):
 
 - **engine.js** 纯函数无状态; 运行期用 i18n 的 `t()`(仅函数体内)
 - **pager.js** 顶层仅声明无执行语句; 运行期依赖 reader 的 `state/$/t/toast/showUnit/getPageHeight/REDUCED_MOTION` 与 pinyin 的 `pyMarkMove`(契约写在文件头)
@@ -118,7 +119,7 @@ tests/smoke.mjs 1257 行   零依赖冒烟测试(内置静态服务器驱动真 
 4. **潜在隐患备忘**：materializeResource 在 makeResourceUrl 失败时仍无条件摘除 data-rpath
    （.catch 吞错后清理照跑）——属健壮性缺口，下次动媒体管线时顺手加固
 5. **回归测试资产**：`tests/smoke.mjs` 已入库（零依赖, `node tests/smoke.mjs` 直接运行,
-   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 136 项断言覆盖开书/分章/书架/编辑模式/
+   内置随机端口静态服务器 + 真 Chrome CDP 驱动, 144 项断言覆盖开书/分章/书架/编辑模式/
    备份往返/重链接/双视图/封面提取/注音会话级/i18n/a11y/打字模式/逐字阅读/野生书容错）。
    凡改解析/排版/书架或新增交互模式, 先跑冒烟再提交
 6. **经典脚本方法重名陷阱**：类里新增方法不可与既有同名（哪怕签名不同）——后者静默覆盖

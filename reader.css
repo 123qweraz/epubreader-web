@@ -244,6 +244,27 @@ body.dark .mmBadge { background: rgba(255,255,255,.08); }
 .mmNode.mmHl { background: var(--hlc, #ffe066); border-color: rgba(0,0,0,.18); color: #26241f; font-weight: 500; max-width: 240px; }
 body.dark .mmNode.mmHl { color: #26241f; }
 
+/* ---- 生词面板: 统计卡片 + 可点击生词表 ---- */
+.vocabPage { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.vocabPage[hidden] { display: none; }
+.vocabHead { padding: 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vocabRangeSelect { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; outline: none; }
+.vocabRangeSelect:focus { border-color: var(--accent); }
+.vocabStatus { font-size: 12px; color: var(--muted); }
+.vocabContent { flex: 1; overflow-y: auto; padding: 10px 8px; min-height: 0; }
+.vocabCards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+.vocabCard { background: var(--button); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; text-align: center; }
+.vocabCardNum { font-size: 20px; font-weight: 600; color: var(--accent); line-height: 1.2; }
+.vocabCardLabel { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.vocabEmpty { padding: 24px 12px; text-align: center; color: var(--muted); font-size: var(--fs-sm); }
+.vocabList { display: flex; flex-direction: column; gap: 2px; }
+.vocabRow { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; background: transparent; padding: 7px 8px; border-radius: 6px; }
+.vocabRow:hover { background: var(--button); filter: none; }
+.vocabWord { font-size: 15px; font-weight: 600; color: var(--fg); min-width: 2em; }
+.vocabCount { font-size: 12px; color: var(--accent); min-width: 2.2em; }
+.vocabChapter { flex: 1; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.dark .vocabCard { background: #302e2b; border-color: #4a4641; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
