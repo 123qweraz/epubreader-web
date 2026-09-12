@@ -76,6 +76,7 @@ function measurePaged() {
   const { flow } = pagedCtx;
   const w = pagedPageWidth();
   pagedCtx.w = w;
+  pagedCtx.h = pagedCtx.doc.defaultView ? pagedCtx.doc.defaultView.innerHeight : 0;
   pagedCtx.stride = w + PG_GAP;
   pagedCtx.vertical = !!state.vertical;
   const win = pagedCtx.doc.defaultView;
@@ -201,7 +202,9 @@ function syncPagedWidth() {
   pagedSyncTimer = setTimeout(() => {
     if (!pagedCtx) return;
     const w = pagedPageWidth();
-    if (w === pagedCtx.w) return;
+    const h = pagedCtx.doc.defaultView ? pagedCtx.doc.defaultView.innerHeight : 0;
+    /* 宽度或高度任一变化都需重算: 移动端地址栏收展/全屏切换只改高度 */
+    if (w === pagedCtx.w && h === pagedCtx.h) return;
     measurePaged();
     buildUnitPages();
     applyPagedTransform(true);

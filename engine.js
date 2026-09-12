@@ -119,6 +119,7 @@ async function setupFontDecrypt(zip, opfPath, opf) {
     const target = cands.find(c => zip.entries.has(c));
     if (!target) continue;
     const keyStr = algo.includes("adobe") ? uid : uid.replace(/\s+/g, "");
+    if (!crypto.subtle?.digest) return;   /* 非安全上下文(http 部署/file之外): 放弃反混淆, 正常阅读 */
     const keyBytes = new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(keyStr)));
     if (!zip.decryptors) zip.decryptors = new Map();
     zip.decryptors.set(target, u8 => {
@@ -254,6 +255,82 @@ async function extractCover(zip, opfPath, coverItem) {
     const data = await zip.read(resolvePath(opfPath, coverItem.href));
     return new Blob([data], { type: coverItem.media || "image/jpeg" });
   } catch { return null; }
+}
+
+/* ---------- 图片提取与打包 ---------- */
+/* 书内全部图片条目: manifest 声明 image/* 优先, 全 ZIP 按常见图片扩展名兜底
+   (封面/未声明图片/野书高频)。返回 [{path, media}], 键为 normalize 后的 ZIP 条目名, 去重 */
+const IMAGE_EXT_RE = /\.(?:jpe?g|png|gif|webp|svgz?|bmp|avif|ico|tiff?)$/i;
+function collectImages(zip, opfPath, manifest) {
+  const seen = new Set();
+  const out = [];
+  const add = (path, media) => {
+    const key = normalize(path);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ path: key, media: media || "" });
+  };
+  for (const it of (manifest || new Map()).values()) {
+    if (it && it.href && /^image\//i.test(it.media || "")) add(resolvePath(opfPath, it.href), it.media);
+  }
+  for (const name of zip.entries.keys()) {
+    if (!/\/$/.test(name) && IMAGE_EXT_RE.test(name)) add(name);
+  }
+  return out;
+}
+
+/* store 模式 ZIP 打包(图片已压缩, 免二次压缩): 条目平铺为文件名(路径冲突自动加序号),
+   逐条读取后 Blob 惰性拼接, 加密/损坏条目跳过不中断; 返回 application/zip Blob */
+async function buildImagesZip(zip, images) {
+  const nameCount = new Map();
+  const enc = new TextEncoder();
+  const parts = [];
+  const centrals = [];
+  let offset = 0;
+  let count = 0;
+  for (const { path } of images) {
+    let data;
+    try { data = await zip.read(path); } catch { continue; }
+    const rawName = safeBase(safeDecode(path.split("/").pop()));
+    if (!rawName) continue;
+    const n = nameCount.get(rawName) || 0;
+    nameCount.set(rawName, n + 1);
+    let name = rawName;
+    if (n > 0) {
+      const dot = rawName.lastIndexOf(".");
+      name = (dot > 0 ? rawName.slice(0, dot) : rawName) + `(${n + 1})` + (dot > 0 ? rawName.slice(dot) : "");
+    }
+    const nameB = enc.encode(name);
+    const u8 = new Uint8Array(data);
+    const crc = crc32(u8);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, u8.length, true); lh.setUint32(22, u8.length, true);
+    lh.setUint16(26, nameB.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameB, u8);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, u8.length, true); ch.setUint32(24, u8.length, true);
+    ch.setUint16(28, nameB.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    centrals.push(new Uint8Array(ch.buffer), nameB);
+    offset += 30 + nameB.length + u8.length;
+    count++;
+    await yieldToUi();
+  }
+  let cdSize = 0;
+  for (const c of centrals) cdSize += c.length;
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, count, true); eocd.setUint16(10, count, true);
+  eocd.setUint32(12, cdSize, true); eocd.setUint32(16, offset, true);
+  return new Blob([...parts, ...centrals, new Uint8Array(eocd.buffer)], { type: "application/zip" });
+}
+function safeBase(n) {
+  n = (n ?? "").trim().replace(/[\\/:*?"<>|]+/g, "_");
+  return n && !/^(\.|\.\.)$/.test(n) ? n : "";
 }
 
 /* ---------- 目录(nav/NCX/spine 兜底) ---------- */

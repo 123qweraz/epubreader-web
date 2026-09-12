@@ -284,12 +284,65 @@ window.__rawEpub = (title, o = {}) => {
   ok(/第\s*1\s*\/\s*1\s*章|Chapter 1/.test(openedEpub.progress), "进度显示正常: " + openedEpub.progress);
   ok(await evalJs(`document.getElementById("closeBookBtn").hidden === false`), "打开书籍后✕按钮显示");
 
+  /* ---- 5b. 一键提取书内图片: 收集→store打包→zip可回读 + 按钮点击流 ---- */
+  ok(await evalJs(`document.getElementById("exportImagesBtn").hidden === false`), "EPUB打开后导出按钮显示");
+  const imgzip = await evalJs(`
+(async () => {
+  const imgs = collectImages(state.zip, state.opfPath, state.book.manifest);
+  if (!imgs.length) return JSON.stringify({ count: 0 });
+  const blob = await buildImagesZip(state.zip, imgs);
+  const z = new ZipReader(await blob.arrayBuffer());
+  const names = [...z.entries.keys()].sort();
+  for (const n of names) await z.read(n);
+  return JSON.stringify({ count: imgs.length, names, size: blob.size, type: blob.type });
+})()
+`);
+  const iz = JSON.parse(imgzip);
+  ok(iz.count === 1 && iz.names[0] === "cover.png" && iz.type === "application/zip" && iz.size > 0, `图片收集+store打包可回读(${iz.names.join(",")})`);
+  await evalJs(`
+window.__origAClick = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () {
+  if (this.download != null) { (window.__dl || (window.__dl = [])).push(this.download); return; }
+  window.__origAClick.call(this);
+};
+document.getElementById("exportImagesBtn").click();
+`);
+  await sleep(900);
+  const expChk = await evalJs(`
+(() => {
+  const r = { hidden: document.getElementById("exportImagesBtn").hidden, dl: window.__dl || [], toast: document.getElementById("toast")?.querySelector(".toastMsg")?.textContent || "" };
+  HTMLAnchorElement.prototype.click = window.__origAClick;
+  return JSON.stringify(r);
+})()
+`);
+  const expP = JSON.parse(expChk);
+  ok(expP.hidden === false && /已导出 1 张图片|Exported 1 image/.test(expP.toast) && expP.dl.includes("冒烟测试书-images.zip"), `一键导出触发下载与计数toast(${expP.dl[0]} / ${expP.toast})`);
+
   /* ---- 6. 书架渲染 + 撤销删除 + 锚定toast ---- */
   await evalJs(`document.getElementById("closeBookBtn").click()`);
   await sleep(400);
   ok(await evalJs(`document.getElementById("welcome").hidden === false && document.getElementById("closeBookBtn").hidden === true`), "✕点击直接关闭书籍回书架");
   const shelfCount = await evalJs(`document.querySelectorAll("#shelfList .shelfItem").length`);
   ok(shelfCount === 1, "书架出现1条记录");
+  /* IDB 打开失败退避自愈: 退避期不立即失败清空书架, 等待重试后自动重画而非假空 */
+  const idbHeal = await evalJs(`
+(async () => {
+  idbPromise = null;
+  idbFailAt = performance.now() - 100;
+  idbRetryCount = 1;
+  renderShelf();
+  await new Promise(r => setTimeout(r, 300));
+  const keptDuringBackoff = document.querySelectorAll("#shelfList .shelfItem").length !== 0;
+  await new Promise(r => setTimeout(r, 2500));
+  return JSON.stringify({
+    keptDuringBackoff,
+    countAfter: document.querySelectorAll("#shelfList .shelfItem").length,
+    idbRetryCount
+  });
+})()
+`);
+  const idbP = JSON.parse(idbHeal);
+  ok(idbP.keptDuringBackoff && idbP.countAfter === 1 && idbP.idbRetryCount === 0, "IDB退避期书架不假空, 恢复后自动重画且失败计数清零");
   const coverChk = await evalJs(`
 (async () => {
   const m = (await idbAll("meta"))[0];
@@ -1119,6 +1172,7 @@ window.__rawEpub = (title, o = {}) => {
 `);
   const txtInfo = await evalJs(`({ units: state.navUnits.length, label: document.getElementById("chapterLabel").textContent, isTxt: state.book.isTxt })`);
   ok(txtInfo.isTxt && txtInfo.units === 2 && txtInfo.label.includes("第一章"), `TXT 分章打开(${txtInfo.units}单元, 标签:${txtInfo.label})`);
+  ok(await evalJs(`document.getElementById("exportImagesBtn").hidden === true`), "TXT打开时图片导出按钮保持隐藏");
 
   /* ---- 8. 备份导出 ---- */
   const exported = await evalJs(`
@@ -1286,6 +1340,100 @@ window.__rawEpub = (title, o = {}) => {
   ok(editFlow.restored, "撤销后全部恢复");
   ok(editFlow.oneDel && editFlow.purgedOne, "单选删除超时后真正清除记录");
   ok(editFlow.exitedViaEsc, "Escape 退出编辑模式");
+
+  /* ---- 9f. 回归: 开书并发令牌 / 非安全上下文加密书 / Infinity进度 / 翻页高度重算 ---- */
+  /* 9f-1: 快速连开两本书(先大后小), 旧流水线必须作废——不得慢开胜出覆盖界面, 不得把后书进度串写进前书条目 */
+  const race = await evalJs(`
+(async () => {
+  const big = window.__buildEpub("并发大书", 900000);
+  const small = window.__buildEpub("并发小书");
+  const p1 = openBookFile(big);
+  const p2 = openBookFile(small);
+  await Promise.allSettled([p1, p2]);
+  await new Promise(r => setTimeout(r, 400));
+  const smallMeta = await idbGet("meta", bookId("并发小书", small.size));
+  const bigMeta = await idbGet("meta", bookId("并发大书", big.size));
+  return {
+    lastBook: state.book && state.book.title,
+    label: document.getElementById("chapterLabel").textContent,
+    smallI: smallMeta ? smallMeta.i : null,
+    bigExists: !!bigMeta && !!bigMeta.file
+  };
+})()
+`);
+  ok(race.lastBook === "并发小书" && race.bigExists === false,
+    `开书并发: 后开小书胜出且旧流水线不串写书架(最终=${race.lastBook})`);
+  await evalJs(`closeBook()`);
+  await sleep(250);
+
+  /* 9f-2: crypto.subtle 缺失(非安全上下文 http 部署)时, 含 encryption.xml 的加密书仍可打开且不注册反混淆 */
+  const noKey = await evalJs(`
+(async () => {
+  const original = window.crypto.subtle;
+  Object.defineProperty(window.crypto, "subtle", { value: undefined, configurable: true, writable: true });
+  try {
+    await openBookFile(window.__makeEpubFile(window.__assembleZip([
+      ["mimetype", "application/epub+zip"],
+      ["META-INF/container.xml", '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+      ["META-INF/encryption.xml", '<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/><enc:CipherData><enc:CipherReference URI="OEBPS/fonts/f.ttf"/></enc:CipherData></enc:EncryptedData></encryption>'],
+      ["OEBPS/content.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>无密钥书</dc:title><dc:identifier id="uid">urn:uuid:obf-test-key</dc:identifier></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>'],
+      ["OEBPS/c1.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>正文内容用于滚动。</p></body></html>'],
+      ["OEBPS/fonts/f.ttf", new Uint8Array(64)]
+    ]), "无密钥书.epub"));
+    return {
+      opened: !!state.book && state.book.title === "无密钥书",
+      label: document.getElementById("chapterLabel").textContent.length > 0,
+      decryptors: state.zip && state.zip.decryptors ? state.zip.decryptors.size : 0
+    };
+  } finally {
+    Object.defineProperty(window.crypto, "subtle", { value: original, configurable: true, writable: true });
+  }
+})()
+`);
+  ok(noKey.opened && noKey.label && noKey.decryptors === 0, "非安全上下文: crypto.subtle缺失时加密清单书仍正常打开(不注册反混淆)");
+  await evalJs(`closeBook()`);
+  await sleep(250);
+
+  /* 9f-3: flipPage 跨章时 pageIdx 短暂为 Infinity, 期间保存进度不得产生 r:null 销毁阅读位置 */
+  const inf = await evalJs(`
+(async () => {
+  await openBookFile(window.__buildEpub("无限进度书", 120000));
+  const mb = document.getElementById("modeBtn");
+  if (mb.getAttribute("aria-pressed") !== "true") { mb.click(); }
+  let n = 0;
+  await new Promise(done => { const w = () => { const c = typeof pagedCtx === "object" && pagedCtx && pagedCtx.pages > 1; if (c || ++n > 60) done(); else setTimeout(w, 100); }; w(); });
+  state.pageIdx = Infinity;
+  flushProgress();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(progressKey(state.book.title, state.book.fileSize))); } catch {}
+  const ratioNow = currentRatio();
+  return { pages: pagedCtx.pages, rSaved: saved && saved.r, ratioNow,
+           ok: pagedCtx.pages > 1 && Number.isFinite(saved && saved.r) && Number.isFinite(ratioNow) };
+})()
+`);
+  ok(inf.pages > 1 && inf.ok, `Infinity间隙进度不产生null(r=${inf.rSaved}@${inf.pages}页)`);
+  await evalJs(`closeBook()`);
+  await sleep(250);
+
+  /* 9f-4: 翻页模式仅高度变化(移动端地址栏/全屏)也应触发分页重算 */
+  await evalJs(`
+(async () => {
+  await openBookFile(window.__buildEpub("高度重算书", 80000));
+  const mb = document.getElementById("modeBtn");
+  if (mb.getAttribute("aria-pressed") !== "true") { mb.click(); }
+  let n = 0;
+  await new Promise(done => { const w = () => { const c = typeof pagedCtx === "object" && pagedCtx && pagedCtx.pages > 1; if (c || ++n > 60) done(); else setTimeout(w, 100); }; w(); });
+})()
+`);
+  const hPre = await evalJs(`(() => { const c = typeof pagedCtx === "object" && pagedCtx; return { h: c ? c.h : null, pages: c ? c.pages : 0 }; })()`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1400, deviceScaleFactor: 1, mobile: false });
+  await sleep(700);
+  const hPost = await evalJs(`(() => { const c = typeof pagedCtx === "object" && pagedCtx; return { h: c ? c.h : null, pages: c ? c.pages : 0 }; })()`);
+  ok(typeof hPost.h === "number" && hPost.h > hPre.h && hPost.pages >= 1,
+    `翻页高度重算: innerHeight ${hPre.h}→${hPost.h} 后分页重算(${hPost.pages}页)`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await evalJs(`closeBook()`);
+  await sleep(250);
 
   /* ---- 9e. 书架双视图: 网格默认/设置面板切换/持久化 ---- */
   const viewA = await evalJs(`

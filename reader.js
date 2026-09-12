@@ -176,7 +176,10 @@ function flushProgress() {
   updateProgress();
 }
 function currentRatio() {
-  return pagedActive() ? (state.pageIdx + 0.5) / Math.max(1, pagedCtx.pages) : currentScrollRatio();
+  /* flipPage 跨章节时 pageIdx 可能短暂为 Infinity(等待 setupPaged 钳位),
+     此时进度按起始页计, 避免 JSON.stringify(Infinity)→null 销毁阅读位置 */
+  if (pagedActive()) return Number.isFinite(state.pageIdx) ? (state.pageIdx + 0.5) / Math.max(1, pagedCtx.pages) : 0;
+  return currentScrollRatio();
 }
 function saveProgress() {
   if (!state.book) return;
@@ -191,11 +194,20 @@ function saveProgress() {
 function bookId(title, size) { return `${title}\u0000${size}`; }
 
 let idbPromise = null;
-let idbFailAt = 0;   /* 上次打开失败时间戳, 失败后短暂退避避免反复重试(浏览器可用性抖动时自愈) */
+let idbFailAt = 0;        /* 上次打开失败时间戳 */
+let idbRetryCount = 0;    /* 连续失败计数, 成功清零 */
+let idbRetryWait = null;  /* 退避期共享等待: 并发调用合并为一次 setTimeout */
 function idbOpen() {
   if (!idbPromise) {
-    if (performance.now() - idbFailAt < 2000)
-      return Promise.reject(new Error(t("shelfUnavailable")));
+    const inBackoff = idbFailAt && performance.now() - idbFailAt < 2000;
+    if (inBackoff && idbRetryCount < 5) {
+      /* 退避期不立即失败: 共享等待后自动重试。否则书架渲染/书籍写入会瞬时失败,
+         renderShelf 的 catch 吞错后画成假空书架, 且无自动重画(用户眼前书架空),
+         要等用户手工开一本书后 registerBook 间接触发重画才恢复 */
+      if (!idbRetryWait)
+        idbRetryWait = new Promise(res => setTimeout(() => { idbRetryWait = null; res(); }, Math.max(30, idbFailAt + 2000 - performance.now())));
+      return idbRetryWait.then(() => idbOpen());
+    }
     idbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open("epubreader-db", 1);
       req.onupgradeneeded = () => {
@@ -203,8 +215,8 @@ function idbOpen() {
         if (!db.objectStoreNames.contains("files")) db.createObjectStore("files", { keyPath: "id" });
         if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "id" });
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => { idbFailAt = performance.now(); reject(req.error); };
+      req.onsuccess = () => { idbRetryCount = 0; resolve(req.result); };
+      req.onerror = () => { idbFailAt = performance.now(); idbRetryCount++; reject(req.error); };
     });
     idbPromise.catch(() => { idbPromise = null; });
   }
@@ -298,14 +310,18 @@ async function pruneShelf() {
     for (const m of metas.slice(SHELF_LIMIT)) await purgeBook(m.id);
   } catch {}
 }
-async function registerBook(file, title, chapters) {
+async function registerBook(file, title, chapters, snap) {
   try {
+    /* 快照在进入时捕获(而非 await 之后), 防止开书并发时把后一本书的进度写进本书条目 */
+    const s = snap || {
+      i: state.chapterIndex, u: state.unitIdx, r: currentRatio(),
+      cover: state.book?.coverBlob instanceof Blob ? state.book.coverBlob : null
+    };
     const id = bookId(title, file.size);
     await idbPut("files", { id, file });
     await idbPut("meta", {
       id, name: file.name, title, size: file.size,
-      lastOpened: Date.now(), chapters, i: state.chapterIndex, u: state.unitIdx, r: currentRatio(),
-      cover: state.book?.coverBlob instanceof Blob ? state.book.coverBlob : null
+      lastOpened: Date.now(), chapters, i: s.i, u: s.u, r: s.r, cover: s.cover
     });
     await pruneShelf();   /* 超出上限按最旧清理, 防止IndexedDB无限累积占满配额 */
   } catch (err) {
@@ -742,6 +758,7 @@ function closeBook() {
   $("chapterLabel").textContent = t("noBook");
   $("progress").textContent = "—";
   $("closeBookBtn").hidden = true;
+  $("exportImagesBtn").hidden = true;
   cancelSearchScan();
   clearSearchResults();
   switchSideTab("toc");
@@ -966,6 +983,12 @@ function initStateForBook(book, title, extras = {}) {
   $("bookTitle").textContent = title;
 }
 async function finishOpenBook(file, title) {
+  /* 快照在首个 await 之前捕获, 之后 showUnit 可能被并发的另一本书覆盖 state,
+     但书架进度仍记录这本书打开时刻的正确位置 */
+  const snap = {
+    i: state.chapterIndex, u: state.unitIdx, r: currentRatio(),
+    cover: state.book?.coverBlob instanceof Blob ? state.book.coverBlob : null
+  };
   renderToc(state.tocEntries);
   $("welcome").hidden = true;
   $("reader").hidden = false;
@@ -980,33 +1003,39 @@ async function finishOpenBook(file, title) {
   }
   $("closeBookBtn").hidden = false;
   await showUnit(start, ropts);
-  registerBook(file, title, state.navUnits.length);
+  registerBook(file, title, state.navUnits.length, snap);
 }
 
-async function openEpub(file) {
+async function openEpub(file, g) {
   setAuto(false);
   const zip = new ZipReader(await file.arrayBuffer());
   const parsed = await parseEpub(zip);
+  if (g !== openGen) return;   /* 开书并发: 旧流水线作废, 防止慢开胜出覆盖界面 */
   if (!parsed) throw new Error(t("noOpf"));
-  await setupFontDecrypt(zip, parsed.opfPath, parsed.opf);   /* encryption.xml字体反混淆: 注册后所有read透明还原 */
+  try { await setupFontDecrypt(zip, parsed.opfPath, parsed.opf); } catch {}   /* 可选增强, 任何失败都不应挡住开书 */
   const { opfPath, opf, manifest, spine } = parsed;
   if (!spine.length) throw new Error(t("noSpine"));
+  $("exportImagesBtn").hidden = false;
   const metaTitle = parsed.opfTitle || file.name.replace(/\.epub$/i, "");
   const mediaByPath = new Map();
   for (const item of manifest.values()) if (item.href) mediaByPath.set(resolvePath(opfPath, item.href), item.media);
   const book = { title: metaTitle, manifest, spine, opf, ncxPath: parsed.ncxPath, fileSize: file.size };
-  book.coverBlob = await extractCover(zip, opfPath, parsed.coverItem);
+  const cover = await extractCover(zip, opfPath, parsed.coverItem);
+  if (g !== openGen) return;
+  book.coverBlob = cover;
 
   initStateForBook(book, metaTitle, { zip, opfPath, mediaByPath });
   state.tocEntries = await buildToc(zip, opfPath, opf, manifest, spine);
+  if (g !== openGen) return;
   state.navUnits = buildNavUnits(state.tocEntries, book);
   await finishOpenBook(file, metaTitle);
 }
 
-async function openText(file) {
+async function openText(file, g) {
   setAuto(false);
   const text = decodeTextFile(await file.arrayBuffer());
   const chapters = parseTxtChapters(text);
+  if (g !== openGen) return;   /* 开书并发: 旧流水线作废 */
   const title = file.name.replace(/\.txt$/i, "");
   const book = {
     title,
@@ -1030,11 +1059,13 @@ async function openText(file) {
   await finishOpenBook(file, title);
 }
 
+let openGen = 0;   /* 开书流水线令牌: 每次 openBookFile 递增, 旧流水线在 await 间隙自检作废 */
 async function openBookFile(file) {
+  const g = ++openGen;
   cancelSearchScan();
   clearSearchResults();
-  if (/\.txt$/i.test(file.name)) await openText(file);
-  else await openEpub(file);
+  if (/\.txt$/i.test(file.name)) await openText(file, g);
+  else await openEpub(file, g);
 }
 
 async function makeResourceUrl(path) {
@@ -1044,6 +1075,35 @@ async function makeResourceUrl(path) {
   const url = URL.createObjectURL(new Blob([data], {type}));
   state.urls.set(path, url);
   return url;
+}
+
+/* ---------- 一键提取书内全部图片: 收集→store打包→下载书名-images.zip ---------- */
+let imageExportBusy = false;
+async function exportImages() {
+  if (imageExportBusy || !state.zip || state.book?.isTxt) return;
+  imageExportBusy = true;
+  const btn = $("exportImagesBtn");
+  btn.disabled = true;
+  try {
+    const images = collectImages(state.zip, state.opfPath, state.book.manifest);
+    if (!images.length) { toast(t("noImages")); return; }
+    toast(t("imagesPacking"));
+    const blob = await buildImagesZip(state.zip, images);
+    const base = String(state.book.title || "book").replace(/[\\/:*?"<>|]+/g, "_").trim() || "book";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${base}-images.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast(t("imagesExported", images.length));
+  } catch (e) {
+    toast(t("imagesExportFail"));
+  } finally {
+    imageExportBusy = false;
+    btn.disabled = false;
+  }
 }
 
 /* ---------- 整书模式媒体懒解压 ---------- */
@@ -2101,6 +2161,7 @@ $("tabMindMap").onclick = () => switchSideTab("mindmap");
 $("tabVocab").onclick = () => switchSideTab("vocab");
 $("vocabRangeSelect").onchange = () => vocabRender();
 $("openWelcome").onclick = () => $("fileInput").click();
+$("exportImagesBtn").onclick = exportImages;
 
 /* ---- 侧边栏面板控制: 最大化 / 关闭 ---- */
 const sideMaxBtn = $("maximizeSidebar");
